@@ -117,20 +117,18 @@ function renderCalendar(type) {
   // Add click handlers
   daysContainer.querySelectorAll('.calendar-day.available').forEach(dayEl => {
     dayEl.addEventListener('click', function(e) {
-      e.stopPropagation(); // Prevent event bubbling
+      e.stopPropagation();
       const date = new Date(this.dataset.date);
       
       if (type === 'checkin') {
         checkinDate = date;
-        checkoutDate = null; // Reset checkout
-        document.getElementById('checkin-display').textContent = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        document.getElementById('checkout-display').textContent = 'Add date';
+        checkoutDate = null;
+        document.getElementById('checkin-input').value = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        document.getElementById('checkout-input').value = '';
         
-        // Update calendars BEFORE closing
         renderCalendar('checkin');
         renderCalendar('checkout');
         
-        // Close the calendar
         document.getElementById('checkin-popup').classList.remove('active');
       } else {
         if (!checkinDate || date <= checkinDate) {
@@ -138,13 +136,11 @@ function renderCalendar(type) {
           return;
         }
         checkoutDate = date;
-        document.getElementById('checkout-display').textContent = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        document.getElementById('checkout-input').value = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         
-        // Update calendars BEFORE closing
         renderCalendar('checkin');
         renderCalendar('checkout');
         
-        // Close the calendar
         document.getElementById('checkout-popup').classList.remove('active');
       }
     });
@@ -204,7 +200,7 @@ document.getElementById('checkout-next').addEventListener('click', function(e) {
 
 // Guest Picker
 const guestsField = document.getElementById('guests-field');
-const guestsPopup = document.getElementById('guests-popup');
+const guestsPopup = document.getElementById('guest-popup');
 const guestsDisplay = document.getElementById('guests-display');
 const guestCountEl = document.getElementById('guest-count');
 const guestMinus = document.getElementById('guest-minus');
@@ -246,16 +242,17 @@ function handleSearch() {
   const checkout = checkoutDate ? checkoutDate.toISOString().split('T')[0] : '';
   const guests = guestCount;
   
-  // Build query string
   const params = new URLSearchParams();
   if (location) params.append('location', location);
   if (checkin) params.append('checkin', checkin);
   if (checkout) params.append('checkout', checkout);
   params.append('guests', guests);
   
-  // Redirect to listings page
   window.location.href = `/listings?${params.toString()}`;
 }
+
+// Add search button click handler
+document.getElementById('search-btn').addEventListener('click', handleSearch);
 
 // Initialize
 updateGuestDisplay();
