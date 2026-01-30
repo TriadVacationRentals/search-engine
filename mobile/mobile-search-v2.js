@@ -1,9 +1,11 @@
+document.addEventListener('DOMContentLoaded', function() {
+
 const WORKER_URL = 'https://hostaway-proxy.triad-sync.workers.dev';
 let debounceTimer = null;
 let selectedLocation = null;
+let guests = 2;
 let checkIn = null;
 let checkOut = null;
-let guests = 2;
 let currentMonth = new Date();
 let isSelectingCheckout = false;
 
@@ -88,6 +90,7 @@ document.getElementById('checkOutBox').onclick = function() {
     toggleCalendar();
   }
 };
+
 document.getElementById('guestBox').onclick = toggleGuests;
 document.getElementById('guestMinus').onclick = () => changeGuests(-1);
 document.getElementById('guestPlus').onclick = () => changeGuests(1);
@@ -97,7 +100,9 @@ function togglePanel() {
   const overlay = document.getElementById('bookingOverlay');
   
   if (panel.classList.contains('open')) {
-    closePanel();
+    panel.classList.remove('open');
+    overlay.classList.remove('open');
+    document.body.style.overflow = '';
   } else {
     panel.classList.add('open');
     overlay.classList.add('open');
@@ -110,7 +115,6 @@ function closePanel() {
   document.getElementById('bookingOverlay').classList.remove('open');
   document.body.style.overflow = '';
   
-  // Hide panel and show trigger
   setTimeout(() => {
     bookingPanel.classList.remove('visible');
     setTimeout(() => {
@@ -128,8 +132,6 @@ function closePanel() {
     cal.classList.remove('active');
     document.getElementById('checkInBox').classList.remove('active');
     document.getElementById('checkOutBox').classList.remove('active');
-    
-    // Restore visibility
     locationField.style.display = 'block';
     dateSection.style.display = 'grid';
     guestSection.style.display = 'block';
@@ -143,20 +145,18 @@ function closePanel() {
 
 function toggleCalendar() {
   const cal = document.getElementById('calendar');
-  const guestsPopup = document.getElementById('guestPopup');
+  const guests = document.getElementById('guestPopup');
   const dateSection = document.querySelector('.date-section');
   const guestSection = document.querySelector('.guest-section');
   const locationField = document.querySelector('.input-box#locationField').parentElement;
   
-  guestsPopup.classList.remove('active');
+  guests.classList.remove('active');
   document.getElementById('guestBox').classList.remove('active');
   
   if (cal.classList.contains('active')) {
     cal.classList.remove('active');
     document.getElementById('checkInBox').classList.remove('active');
     document.getElementById('checkOutBox').classList.remove('active');
-    
-    // Show all sections
     locationField.style.display = 'block';
     dateSection.style.display = 'grid';
     guestSection.style.display = 'block';
@@ -164,25 +164,17 @@ function toggleCalendar() {
     cal.classList.add('active');
     document.getElementById('checkInBox').classList.add('active');
     document.getElementById('checkOutBox').classList.add('active');
-    
-    // Hide everything except calendar
     locationField.style.display = 'none';
     dateSection.style.display = 'none';
     guestSection.style.display = 'none';
-    
     isSelectingCheckout = false;
     renderCalendar();
   }
 }
 
 function toggleGuests() {
-  const cal = document.getElementById('calendar');
   const guests = document.getElementById('guestPopup');
   const box = document.getElementById('guestBox');
-  
-  cal.classList.remove('active');
-  document.getElementById('checkInBox').classList.remove('active');
-  document.getElementById('checkOutBox').classList.remove('active');
   
   if (guests.classList.contains('active')) {
     guests.classList.remove('active');
@@ -208,25 +200,22 @@ function renderCalendar() {
         <button onclick="changeMonth(1)" style="width: 32px; height: 32px; border: 1px solid #e5e7eb; background: white; border-radius: 8px; cursor: pointer;">→</button>
       </div>
     </div>
-    ${renderMonth(month)}
+    ${renderMonthGrid(month)}
     <div style="text-align: right; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-      <button id="clearDatesBtn" onclick="clearDates()" style="background: none; border: none; color: ${checkIn || checkOut ? '#16A8EE' : '#9ca3af'}; font-size: 14px; font-weight: 500; cursor: ${checkIn || checkOut ? 'pointer' : 'not-allowed'}; padding: 8px 16px; border-radius: 8px; transition: all 0.2s;" ${!checkIn && !checkOut ? 'disabled' : ''}>Clear dates</button>
+      <button onclick="clearDates()" style="background: none; border: none; color: ${checkIn || checkOut ? '#16A8EE' : '#9ca3af'}; font-size: 14px; font-weight: 500; cursor: ${checkIn || checkOut ? 'pointer' : 'not-allowed'}; padding: 8px 16px; border-radius: 8px;" ${!checkIn && !checkOut ? 'disabled' : ''}>Clear dates</button>
     </div>
   `;
-
+  
   attachDayListeners();
 }
 
-function changeMonth(delta) {
-  currentMonth.setMonth(currentMonth.getMonth() + delta);
-  renderCalendar();
-}
-
-function renderMonth(date) {
+function renderMonthGrid(date) {
   const year = date.getFullYear();
   const month = date.getMonth();
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date();
+  today.setHours(0,0,0,0);
   
   let html = '<div class="weekdays">';
   ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].forEach(d => {
@@ -238,12 +227,9 @@ function renderMonth(date) {
     html += '<div class="day empty"></div>';
   }
   
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  
   for (let day = 1; day <= daysInMonth; day++) {
     const date = new Date(year, month, day);
-    const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
+    const dateStr = formatDate(date);
     const isPast = date < today;
     
     let cls = 'day';
@@ -259,7 +245,7 @@ function renderMonth(date) {
       cls += ' in-range';
     }
     
-    html += `<div class="day ${cls}" data-date="${dateStr}">${day}</div>`;
+    html += `<div class="${cls}" data-date="${dateStr}">${day}</div>`;
   }
   
   html += '</div>';
@@ -280,7 +266,6 @@ function selectDate(dateStr) {
     checkIn = dateStr;
     checkOut = null;
     
-    // Enable checkout box
     document.getElementById('checkOutBox').classList.remove('disabled');
     
     const d = new Date(dateStr);
@@ -307,7 +292,12 @@ function selectDate(dateStr) {
   }
 }
 
-function clearDates() {
+window.changeMonth = function(delta) {
+  currentMonth.setMonth(currentMonth.getMonth() + delta);
+  renderCalendar();
+}
+
+window.clearDates = function() {
   checkIn = null;
   checkOut = null;
   isSelectingCheckout = false;
@@ -323,11 +313,11 @@ function clearDates() {
 
 function changeGuests(delta) {
   guests = Math.max(1, Math.min(30, guests + delta));
-  updateGuestControls();
+  updateGuestDisplay();
 }
 
-function updateGuestControls() {
-  const text = guests === 1 ? '1 guest' : `${guests} guests`;
+function updateGuestDisplay() {
+  const text = guests + ' guest' + (guests !== 1 ? 's' : '');
   document.getElementById('guestDisplay').textContent = text;
   document.getElementById('guestNumber').textContent = guests;
   document.getElementById('guestMinus').disabled = guests <= 1;
@@ -341,8 +331,34 @@ function showError(msg) {
   setTimeout(() => el.classList.remove('active'), 5000);
 }
 
-function pad(n) {
-  return String(n).padStart(2, '0');
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
-updateGuestControls();
+// Search button
+document.getElementById('bookBtn').addEventListener('click', function() {
+  if (!selectedLocation) {
+    showError('Please enter a location');
+    return;
+  }
+  if (!checkIn || !checkOut) {
+    showError('Please select check-in and check-out dates');
+    return;
+  }
+  
+  const params = new URLSearchParams({
+    location: selectedLocation.description,
+    checkin: checkIn,
+    checkout: checkOut,
+    guests: guests
+  });
+  
+  window.location.href = `/listings?${params.toString()}`;
+});
+
+updateGuestDisplay();
+
+}); // End DOMContentLoaded
