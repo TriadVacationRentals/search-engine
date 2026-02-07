@@ -1005,7 +1005,14 @@ async function initMapDrivenFiltering(searchCoords) {
     });
     
     const bounds = map.getBounds();
-    console.log('📍 Map bounds:', bounds);
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    
+    console.log('📍 Map state:', {
+      center: `lat=${center.lat.toFixed(4)}, lng=${center.lng.toFixed(4)}`,
+      zoom: zoom,
+      bounds: `SW(${bounds.getSouthWest().lat.toFixed(2)},${bounds.getSouthWest().lng.toFixed(2)}) to NE(${bounds.getNorthEast().lat.toFixed(2)},${bounds.getNorthEast().lng.toFixed(2)})`
+    });
     
     let visibleCount = 0;
     
@@ -1027,11 +1034,6 @@ async function initMapDrivenFiltering(searchCoords) {
       
       // Check if property is within map bounds
       const isInBounds = bounds.contains([lat, lng]);
-      
-      // Debug first 3 properties
-      if (visibleCount < 3) {
-        console.log(`Property ${listingId}: lat=${lat}, lng=${lng}, isInBounds=${isInBounds}`);
-      }
       
       // Apply availability filter if dates were searched
       let isAvailable = true;
@@ -1057,7 +1059,7 @@ async function initMapDrivenFiltering(searchCoords) {
       }
     });
     
-    console.log(`🗺️ Showing ${visibleCount} properties in current map view`);
+    console.log(`🗺️ Filtering complete: ${visibleCount} of ${allCards.length} properties in bounds`);
     
     // Stagger animation for visible cards
     const visibleCards = Array.from(allCards).filter(card => card.style.display !== 'none');
@@ -1071,8 +1073,10 @@ async function initMapDrivenFiltering(searchCoords) {
     
     // If no properties found, try zooming out to find nearest ones
     if (visibleCount === 0 && allCards.length > 0) {
-      console.log('🔍 No properties in view, searching for nearest...');
+      console.log('🔍 ZERO properties in view - triggering smart zoom to nearest properties...');
       findAndShowNearestProperties(map, allCards);
+    } else {
+      console.log('✅ Showing properties, no smart zoom needed');
     }
     
     // Show empty state if still no results
