@@ -1048,7 +1048,6 @@ async function initMapDrivenFiltering(searchCoords) {
     
     // Amenities filters
     const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
-    const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
     if (petsRequired && !property.petsAllowed) return false;
     
