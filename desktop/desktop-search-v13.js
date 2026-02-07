@@ -859,7 +859,8 @@ async function initMapDrivenFiltering(searchCoords) {
   // Function to check other filters (price, type, amenities)
   function passesOtherFilters(card) {
     const listingId = parseInt(card.getAttribute('data-listings-id'));
-    const property = allProperties.find(p => parseInt(p.listingId) === listingId);
+    const allProps = window.filterState.allProperties || [];
+    const property = allProps.find(p => parseInt(p.listingId) === listingId);
     
     if (!property) return true;
     
@@ -889,17 +890,22 @@ async function initMapDrivenFiltering(searchCoords) {
   
   // Update map markers visibility based on filters
   function updateMapMarkersVisibility() {
+    const filterState = window.filterState || {};
+    const availableIds = filterState.availablePropertyIds || [];
+    const didCheck = filterState.didCheckAvailability || false;
+    const allProps = filterState.allProperties || [];
+    
     window.mapMarkers.forEach(marker => {
       const markerListingId = marker.options.listingId;
       
       // Check availability
       let isAvailable = true;
-      if (didCheckAvailability && availablePropertyIds.length > 0) {
-        isAvailable = availablePropertyIds.includes(parseInt(markerListingId));
+      if (didCheck && availableIds.length > 0) {
+        isAvailable = availableIds.includes(parseInt(markerListingId));
       }
       
       // Check other filters
-      const property = allProperties.find(p => parseInt(p.listingId) === parseInt(markerListingId));
+      const property = allProps.find(p => parseInt(p.listingId) === parseInt(markerListingId));
       const passesFilters = property ? passesOtherFilters(document.querySelector(`[data-listings-id="${markerListingId}"]`)) : true;
       
       // Show/hide marker
