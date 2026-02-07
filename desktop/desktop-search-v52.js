@@ -82,10 +82,11 @@
       const allCards = document.querySelectorAll('[data-listings-id]');
       allCards.forEach(card => {
         card.style.opacity = '0.4';
-        card.style.transition = 'opacity 0.2s ease-out';
+        card.style.transition = 'opacity 0.2s ease-out, filter 0.2s ease-out';
         card.style.position = 'relative';
+        card.style.filter = 'grayscale(100%)'; // Black and white
         
-        // Add spinner
+        // Add bigger spinner
         const spinner = document.createElement('div');
         spinner.className = 'initial-loading-spinner';
         spinner.innerHTML = `
@@ -101,9 +102,9 @@
           top: 50%;
           left: 50%;
           transform: translate(-50%, -50%);
-          width: 24px;
-          height: 24px;
-          border: 3px solid rgba(0,0,0,0.1);
+          width: 48px;
+          height: 48px;
+          border: 4px solid rgba(0,0,0,0.1);
           border-top-color: #16A8EE;
           border-radius: 50%;
           animation: initialSpin 0.8s linear infinite;
@@ -1002,12 +1003,14 @@ async function initMapDrivenFiltering(searchCoords) {
     const map = window.mapInstance;
     const allCards = document.querySelectorAll('[data-listings-id]');
     
-    // Remove initial loading spinners
+    // Remove initial loading spinners AND grayscale
     allCards.forEach(card => {
       const spinner = card.querySelector('.initial-loading-spinner');
       if (spinner) {
         spinner.remove();
       }
+      // Remove grayscale filter
+      card.style.filter = 'none';
     });
     
     const bounds = map.getBounds();
@@ -1085,14 +1088,16 @@ async function initMapDrivenFiltering(searchCoords) {
     if (visibleCount === 0 && allCards.length > 0) {
       console.log('🔍 ZERO properties visible - zooming out...');
       
-      // Just zoom out by 1 level
       const currentZoom = map.getZoom();
       if (currentZoom > 3) {
+        console.log(`📉 Zooming out from ${currentZoom} to ${currentZoom - 1}`);
         map.setZoom(currentZoom - 1);
-        // The zoomend event will trigger filtering again
+        // The zoomend event will trigger filtering again automatically
+      } else {
+        console.log('⚠️ Already at minimum zoom (3), cannot zoom out further');
       }
     } else {
-      console.log('✅ Showing properties, no zoom needed');
+      console.log(`✅ Showing ${visibleCount} properties, no zoom needed`);
     }
     
     // Show empty state if still no results
@@ -1179,53 +1184,39 @@ async function initMapDrivenFiltering(searchCoords) {
   
   // Center map on search location if provided
   if (searchCoords && searchCoords.lat && searchCoords.lng) {
-    console.log('🗺️ Will center map on search location:', searchCoords);
+    console.log('🗺️ Centering map on search location:', searchCoords);
     
-    // Wait a bit for map to fully initialize before centering
-    setTimeout(() => {
-      console.log('🗺️ NOW centering map...');
+    try {
+      // Center immediately - no delay
+      map.setView([searchCoords.lat, searchCoords.lng], 10);
       
-      try {
-        map.setView([searchCoords.lat, searchCoords.lng], 10);
-        
-        // Wait for centering to complete, THEN attach listeners
-        map.once('moveend', () => {
-          const finalCenter = map.getCenter();
-          console.log('✅ Map finished centering. Final position:', {
-            lat: finalCenter.lat,
-            lng: finalCenter.lng,
-            zoom: map.getZoom()
-          });
-          
-          // NOW attach the movement listeners
-          map.on('moveend', updateCardsFromMapBounds);
-          map.on('zoomend', updateCardsFromMapBounds);
-          
-          // Trigger initial filtering with longer delay to ensure map is settled
-          setTimeout(() => {
-            console.log('⚡ Triggering initial filtering after map center');
-            updateCardsFromMapBounds();
-          }, 500);
+      // Wait for centering to complete, THEN attach listeners
+      map.once('moveend', () => {
+        const finalCenter = map.getCenter();
+        console.log('✅ Map finished centering. Final position:', {
+          lat: finalCenter.lat.toFixed(4),
+          lng: finalCenter.lng.toFixed(4),
+          zoom: map.getZoom()
         });
         
-        // Fallback: If moveend doesn't fire within 3 seconds, force trigger
-        setTimeout(() => {
-          if (!window.updateCardsFromMap) {
-            console.warn('⚠️ Map moveend event did not fire - forcing initialization');
-            map.on('moveend', updateCardsFromMapBounds);
-            map.on('zoomend', updateCardsFromMapBounds);
-            updateCardsFromMapBounds();
-          }
-        }, 3000);
-        
-      } catch (error) {
-        console.error('❌ Error centering map:', error);
-        // Fallback: attach listeners and filter anyway
+        // NOW attach the movement listeners
         map.on('moveend', updateCardsFromMapBounds);
         map.on('zoomend', updateCardsFromMapBounds);
-        updateCardsFromMapBounds();
-      }
-    }, 1000); // Wait 1 second for map to initialize
+        
+        // Trigger initial filtering
+        setTimeout(() => {
+          console.log('⚡ Triggering initial filtering after map center');
+          updateCardsFromMapBounds();
+        }, 300);
+      });
+      
+    } catch (error) {
+      console.error('❌ Error centering map:', error);
+      // Fallback: attach listeners and filter anyway
+      map.on('moveend', updateCardsFromMapBounds);
+      map.on('zoomend', updateCardsFromMapBounds);
+      updateCardsFromMapBounds();
+    }
   } else {
     console.log('ℹ️ No search coordinates - showing all properties in default view');
     // No search location - attach listeners immediately
