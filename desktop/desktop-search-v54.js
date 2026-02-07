@@ -1028,6 +1028,14 @@ async function initMapDrivenFiltering(searchCoords) {
     
     console.log(`🗺️ Filtering complete: ${visibleCount} of ${allCards.length} properties in bounds`);
     
+    // If no properties visible, reset ALL cards to full opacity immediately (don't leave them faded)
+    if (visibleCount === 0) {
+      allCards.forEach(card => {
+        card.style.opacity = '1';
+        card.style.display = 'none';
+      });
+    }
+    
     // Stagger animation ONLY for visible cards
     const visibleCards = Array.from(allCards).filter(card => card.style.display !== 'none');
     
