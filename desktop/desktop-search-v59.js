@@ -911,14 +911,17 @@
       await getLocationCoordinates(location);
       
       // If dates provided, check availability
-      if (checkin && checkout) {
-        console.log('📅 Checking availability for dates...');
-        await checkAvailability(checkin, checkout, guests || '2');
-      } else {
-        // Clear availability filter if no dates
-        window.filterState.didCheckAvailability = false;
-        window.filterState.availablePropertyIds = [];
-      }
+if (checkin && checkout && checkin !== '' && checkout !== '') {
+  console.log('📅 Checking availability for dates...');
+  await checkAvailability(checkin, checkout, guests || '2');
+} else {
+  // Clear availability filter if no dates
+  console.log('🧹 Clearing availability filter (location-only search)');
+  didCheckAvailability = false;
+  availablePropertyIds = [];
+  window.filterState.didCheckAvailability = false;
+  window.filterState.availablePropertyIds = [];
+}
       
       // Re-center map and filter
       if (searchLocationCoords && searchLocationCoords.lat && searchLocationCoords.lng) {
