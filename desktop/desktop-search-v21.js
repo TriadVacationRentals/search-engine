@@ -867,6 +867,8 @@ async function initMapDrivenFiltering(searchCoords) {
       // Apply other filters (price, type, amenities)
       const passesFilters = passesOtherFilters(card);
       
+      console.log(`Card ${listingId}: inBounds=${isInBounds}, available=${isAvailable}, passesFilters=${passesFilters}`);
+      
       // Show card if in bounds AND available AND passes filters
       if (isInBounds && isAvailable && passesFilters) {
         card.style.display = '';
