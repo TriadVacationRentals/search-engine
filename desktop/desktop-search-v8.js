@@ -11,6 +11,7 @@
   // State
   let allProperties = [];
   let availablePropertyIds = [];
+  let searchLocationCoords = null; // Store search location coordinates
   let actualMinPrice = Infinity;
   let actualMaxPrice = 0;
   
@@ -27,51 +28,64 @@
   // ============================================
   
   async function init() {
-    console.log('Initializing filter system...');
-    
-    const urlParams = new URLSearchParams(window.location.search);
-    const location = urlParams.get('location');
-    const checkin = urlParams.get('checkin');
-    const checkout = urlParams.get('checkout');
-    const guests = urlParams.get('guests');
-    
-    if (location) {
-      document.getElementById('location-input').value = location;
-      selectedLocation = { description: location };
+    try {
+      console.log('Initializing filter system...');
+      
+      const urlParams = new URLSearchParams(window.location.search);
+      const location = urlParams.get('location');
+      const checkin = urlParams.get('checkin');
+      const checkout = urlParams.get('checkout');
+      const guests = urlParams.get('guests');
+      
+      console.log('URL params:', { location, checkin, checkout, guests });
+      
+      if (location) {
+        document.getElementById('location-input').value = location;
+        selectedLocation = { description: location };
+        // Get coordinates for radius filtering
+        console.log('Getting location coordinates...');
+        await getLocationCoordinates(location);
+      }
+      
+      if (checkin) {
+        checkinDate = new Date(checkin);
+        document.getElementById('checkin-display').value = checkinDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+      
+      if (checkout) {
+        checkoutDate = new Date(checkout);
+        document.getElementById('checkout-display').value = checkoutDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+      
+      if (guests) {
+        guestCount = parseInt(guests);
+        updateGuestDisplay();
+      }
+      
+      console.log('Fetching all properties...');
+      await fetchAllProperties();
+      
+      if (checkin && checkout) {
+        console.log('Has dates - checking availability...');
+        await checkAvailability(checkin, checkout, guests || '2');
+      }
+      
+      console.log('Setting up UI...');
+      setupPriceSliders();
+      buildPropertyTypeFilter();
+      setupEventListeners();
+      updateResultsCount();
+      
+      // Apply filters automatically if we have search criteria
+      if ((checkin && checkout) || location) {
+        console.log('Applying search filters...');
+        applyFilters();
+      }
+      
+      console.log('Filter system ready!');
+    } catch (error) {
+      console.error('Init failed:', error);
     }
-    
-    if (checkin) {
-      checkinDate = new Date(checkin);
-      document.getElementById('checkin-display').value = checkinDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-    
-    if (checkout) {
-      checkoutDate = new Date(checkout);
-      document.getElementById('checkout-display').value = checkoutDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-    
-    if (guests) {
-      guestCount = parseInt(guests);
-      updateGuestDisplay();
-    }
-    
-    await fetchAllProperties();
-    
-    if (checkin && checkout) {
-      await checkAvailability(checkin, checkout, guests || '2');
-    }
-    
-    setupPriceSliders();
-    buildPropertyTypeFilter();
-    setupEventListeners();
-    updateResultsCount();
-    
-    // Apply filters automatically if we have search results
-    if (checkin && checkout && availablePropertyIds.length >= 0) {
-      applyFilters();
-    }
-    
-    console.log('Filter system ready!');
   }
   
   // ============================================
@@ -110,18 +124,64 @@
     try {
       document.getElementById('results-count').textContent = 'Checking availability...';
       
+      console.log('Checking availability:', { checkin, checkout, guests });
+      
       const response = await fetch(
         `${WORKER_URL}/api/search?checkin=${checkin}&checkout=${checkout}&guests=${guests}`
       );
       const data = await response.json();
       
       availablePropertyIds = data.available || [];
-      console.log(`${availablePropertyIds.length} properties available for dates`);
+      console.log(`API returned ${availablePropertyIds.length} available properties:`, availablePropertyIds);
       
     } catch (error) {
       console.error('Availability check failed:', error);
       availablePropertyIds = [];
     }
+  }
+  
+  async function getLocationCoordinates(locationText) {
+    try {
+      // First get place_id from autocomplete
+      const autocompleteResponse = await fetch(
+        `${WORKER_URL}/api/places/autocomplete?input=${encodeURIComponent(locationText)}`
+      );
+      const autocompleteData = await autocompleteResponse.json();
+      
+      if (!autocompleteData.predictions || autocompleteData.predictions.length === 0) {
+        console.log('No location match found');
+        return;
+      }
+      
+      const placeId = autocompleteData.predictions[0].place_id;
+      
+      // Get coordinates from place details
+      const detailsResponse = await fetch(
+        `${WORKER_URL}/api/places/details?place_id=${placeId}`
+      );
+      const detailsData = await detailsResponse.json();
+      
+      if (detailsData.result && detailsData.result.geometry) {
+        searchLocationCoords = {
+          lat: detailsData.result.geometry.location.lat,
+          lng: detailsData.result.geometry.location.lng
+        };
+        console.log('Search location coords:', searchLocationCoords);
+      }
+    } catch (error) {
+      console.error('Failed to get location coordinates:', error);
+    }
+  }
+  
+  function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 3959; // Earth radius in miles
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c; // Distance in miles
   }
   
   // ============================================
@@ -138,7 +198,22 @@
     const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
     const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
+    const RADIUS_MILES = 30; // 30 mile radius from search location
+    
     return allProperties.filter(function(property) {
+      // Location radius filter (if location was searched)
+      if (searchLocationCoords && property.latitude && property.longitude) {
+        const distance = calculateDistance(
+          searchLocationCoords.lat,
+          searchLocationCoords.lng,
+          property.latitude,
+          property.longitude
+        );
+        if (distance > RADIUS_MILES) {
+          return false;
+        }
+      }
+      
       if (availablePropertyIds.length > 0) {
         if (!availablePropertyIds.includes(parseInt(property.listingId))) {
           return false;
@@ -167,6 +242,10 @@
   
   function applyFilters() {
     const filtered = getFilteredProperties();
+    
+    console.log('Applying filters - showing', filtered.length, 'of', allProperties.length, 'properties');
+    console.log('Available IDs:', availablePropertyIds);
+    console.log('Search location:', searchLocationCoords);
     
     const cards = document.querySelectorAll('[data-listings-id]');
     const cardMap = {};
@@ -560,8 +639,25 @@
   
   async function handleSearch() {
     const location = document.getElementById('location-input').value;
-    const checkin = checkinDate ? checkinDate.toISOString().split('T')[0] : '';
-    const checkout = checkoutDate ? checkoutDate.toISOString().split('T')[0] : '';
+    
+    // Fix date conversion - use local timezone, not UTC
+    let checkin = '';
+    let checkout = '';
+    
+    if (checkinDate) {
+      const year = checkinDate.getFullYear();
+      const month = String(checkinDate.getMonth() + 1).padStart(2, '0');
+      const day = String(checkinDate.getDate()).padStart(2, '0');
+      checkin = `${year}-${month}-${day}`;
+    }
+    
+    if (checkoutDate) {
+      const year = checkoutDate.getFullYear();
+      const month = String(checkoutDate.getMonth() + 1).padStart(2, '0');
+      const day = String(checkoutDate.getDate()).padStart(2, '0');
+      checkout = `${year}-${month}-${day}`;
+    }
+    
     const guests = guestCount;
     
     const params = new URLSearchParams();
