@@ -227,21 +227,8 @@
     const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
     const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
-    const RADIUS_MILES = 30; // 30 mile radius from search location
-    
     return allProperties.filter(function(property) {
-      // Location radius filter (if location was searched)
-      if (searchLocationCoords && property.latitude && property.longitude) {
-        const distance = calculateDistance(
-          searchLocationCoords.lat,
-          searchLocationCoords.lng,
-          property.latitude,
-          property.longitude
-        );
-        if (distance > RADIUS_MILES) {
-          return false;
-        }
-      }
+      // Location filtering is done by Worker - no need to filter here
       
       // Availability check - only apply if we actually checked dates
       if (didCheckAvailability) {
