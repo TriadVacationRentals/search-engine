@@ -881,7 +881,7 @@ async function initMapDrivenFiltering(searchCoords) {
       
       // Set max bounds to prevent zooming too far out
       map.setMaxBounds(paddedBounds);
-      map.setMinZoom(10); // Prevent zooming out too much
+      map.setMinZoom(2); // Prevent zooming out too much
       
       console.log('🗺️ Map bounds limited to property area');
     }
