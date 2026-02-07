@@ -1152,37 +1152,26 @@ async function initMapDrivenFiltering(searchCoords) {
   if (searchCoords && searchCoords.lat && searchCoords.lng) {
     console.log('🗺️ Centering map on search location:', searchCoords);
     
-    try {
-      // Center immediately - no delay
-      map.setView([searchCoords.lat, searchCoords.lng], 10);
-      
-      // Wait for centering to complete, THEN attach listeners
-      map.once('moveend', () => {
-        const finalCenter = map.getCenter();
-        console.log('✅ Map finished centering. Final position:', {
-          lat: finalCenter.lat.toFixed(4),
-          lng: finalCenter.lng.toFixed(4),
-          zoom: map.getZoom()
-        });
-        
-        // NOW attach the movement listeners
-        map.on('moveend', updateCardsFromMapBounds);
-        map.on('zoomend', updateCardsFromMapBounds);
-        
-        // Trigger initial filtering
-        setTimeout(() => {
-          console.log('⚡ Triggering initial filtering after map center');
-          updateCardsFromMapBounds();
-        }, 300);
+    // Attach listeners FIRST
+    map.on('moveend', updateCardsFromMapBounds);
+    map.on('zoomend', updateCardsFromMapBounds);
+    
+    // Center the map
+    map.setView([searchCoords.lat, searchCoords.lng], 10);
+    
+    // Wait for map to settle, then trigger filtering
+    setTimeout(() => {
+      const finalCenter = map.getCenter();
+      console.log('✅ Map should be centered. Position:', {
+        lat: finalCenter.lat.toFixed(4),
+        lng: finalCenter.lng.toFixed(4),
+        zoom: map.getZoom()
       });
       
-    } catch (error) {
-      console.error('❌ Error centering map:', error);
-      // Fallback: attach listeners and filter anyway
-      map.on('moveend', updateCardsFromMapBounds);
-      map.on('zoomend', updateCardsFromMapBounds);
+      console.log('⚡ Triggering initial filtering after map center');
       updateCardsFromMapBounds();
-    }
+    }, 800);
+    
   } else {
     console.log('ℹ️ No search coordinates - attaching listeners and filtering immediately');
     
