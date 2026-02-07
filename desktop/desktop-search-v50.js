@@ -239,24 +239,31 @@
   
   async function getLocationCoordinates(locationText) {
     try {
+      console.log('📍 Fetching coordinates for:', locationText);
+      
       // First get place_id from autocomplete
       const autocompleteResponse = await fetch(
         `${WORKER_URL}/api/places/autocomplete?input=${encodeURIComponent(locationText)}`
       );
       const autocompleteData = await autocompleteResponse.json();
       
+      console.log('📍 Autocomplete response:', autocompleteData);
+      
       if (!autocompleteData.predictions || autocompleteData.predictions.length === 0) {
-        console.log('No location match found');
+        console.warn('⚠️ No location match found for:', locationText);
         return;
       }
       
       const placeId = autocompleteData.predictions[0].place_id;
+      console.log('📍 Place ID:', placeId);
       
       // Get coordinates from place details
       const detailsResponse = await fetch(
         `${WORKER_URL}/api/places/details?place_id=${placeId}`
       );
       const detailsData = await detailsResponse.json();
+      
+      console.log('📍 Place details response:', detailsData);
       
       if (detailsData.result && detailsData.result.geometry) {
         searchLocationCoords = {
@@ -268,9 +275,11 @@
         window.filterState.searchLocationCoords = searchLocationCoords;
         
         console.log('✅ Search location coords:', searchLocationCoords);
+      } else {
+        console.warn('⚠️ No geometry found in place details');
       }
     } catch (error) {
-      console.error('Failed to get location coordinates:', error);
+      console.error('❌ Failed to get location coordinates:', error);
     }
   }
   
@@ -1172,20 +1181,43 @@ async function initMapDrivenFiltering(searchCoords) {
   if (searchCoords && searchCoords.lat && searchCoords.lng) {
     console.log('🗺️ Centering map on search location:', searchCoords);
     
-    map.setView([searchCoords.lat, searchCoords.lng], 10);
-    
-    // Wait for centering to complete, THEN attach listeners
-    map.once('moveend', () => {
-      console.log('✅ Map finished centering on search location');
+    try {
+      map.setView([searchCoords.lat, searchCoords.lng], 10);
       
-      // NOW attach the movement listeners
+      // Wait for centering to complete, THEN attach listeners
+      map.once('moveend', () => {
+        console.log('✅ Map finished centering on search location');
+        
+        // NOW attach the movement listeners
+        map.on('moveend', updateCardsFromMapBounds);
+        map.on('zoomend', updateCardsFromMapBounds);
+        
+        // Trigger initial filtering with longer delay to ensure map is settled
+        setTimeout(() => {
+          console.log('⚡ Triggering initial filtering after map center');
+          updateCardsFromMapBounds();
+        }, 500);
+      });
+      
+      // Fallback: If moveend doesn't fire within 3 seconds, force trigger
+      setTimeout(() => {
+        if (!window.updateCardsFromMap) {
+          console.warn('⚠️ Map moveend event did not fire - forcing initialization');
+          map.on('moveend', updateCardsFromMapBounds);
+          map.on('zoomend', updateCardsFromMapBounds);
+          updateCardsFromMapBounds();
+        }
+      }, 3000);
+      
+    } catch (error) {
+      console.error('❌ Error centering map:', error);
+      // Fallback: attach listeners and filter anyway
       map.on('moveend', updateCardsFromMapBounds);
       map.on('zoomend', updateCardsFromMapBounds);
-      
-      // Trigger initial filtering
-      setTimeout(updateCardsFromMapBounds, 300);
-    });
+      updateCardsFromMapBounds();
+    }
   } else {
+    console.log('ℹ️ No search coordinates - showing all properties in default view');
     // No search location - attach listeners immediately
     map.on('moveend', updateCardsFromMapBounds);
     map.on('zoomend', updateCardsFromMapBounds);
