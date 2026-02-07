@@ -66,19 +66,14 @@
       console.log('Fetching all properties...');
       await fetchAllProperties();
       
-      // Initialize map-driven filtering (wait for map to load)
-      await initMapDrivenFiltering();
-      
-      // If location provided, center map on it
+      // Get location coordinates first if provided
       if (location) {
         console.log('Getting location coordinates...');
         await getLocationCoordinates(location);
-        
-        if (searchLocationCoords) {
-          console.log('Centering map on search location...');
-          centerMapOnLocation(searchLocationCoords.lat, searchLocationCoords.lng, 12);
-        }
       }
+      
+      // Initialize map-driven filtering (wait for map to load, then center if needed)
+      await initMapDrivenFiltering(searchLocationCoords);
       
       // Check availability if dates are provided
       if (checkin && checkout) {
@@ -777,7 +772,7 @@ function waitForMap() {
   });
 }
 
-async function initMapDrivenFiltering() {
+async function initMapDrivenFiltering(searchCoords) {
   try {
     await waitForMap();
     
@@ -785,6 +780,12 @@ async function initMapDrivenFiltering() {
     const allCards = document.querySelectorAll('[data-listings-id]');
     
     console.log('🗺️ Map-driven filtering initialized with', allCards.length, 'cards');
+    
+    // Center map on search location if provided
+    if (searchCoords && searchCoords.lat && searchCoords.lng) {
+      console.log('🗺️ Centering map on search location:', searchCoords);
+      map.setView([searchCoords.lat, searchCoords.lng], 12);
+    }
   
   
   // Function to update cards based on map bounds
