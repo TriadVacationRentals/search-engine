@@ -34,6 +34,11 @@
   let currentCheckinMonth = new Date();
   let currentCheckoutMonth = new Date();
   
+  // Room filters
+  let bedroomsFilter = 0; // 0 = Any
+  let bedsFilter = 0; // 0 = Any
+  let bathroomsFilter = 0; // 0 = Any
+  
   // ============================================
   // INITIALIZATION
   // ============================================
@@ -53,9 +58,6 @@
       if (location) {
         document.getElementById('location-input').value = location;
         selectedLocation = { description: location };
-        // Get coordinates for radius filtering
-        console.log('Getting location coordinates...');
-        await getLocationCoordinates(location);
       }
       
       if (checkin) {
@@ -76,7 +78,7 @@
       console.log('Fetching all properties...');
       await fetchAllProperties();
       
-      // Get location coordinates first if provided
+      // Get coordinates for radius filtering and map centering
       if (location) {
         console.log('Getting location coordinates...');
         await getLocationCoordinates(location);
@@ -103,6 +105,7 @@
       console.log('Setting up UI...');
       setupPriceSliders();
       buildPropertyTypeFilter();
+      setupRoomSelectors();
       setupEventListeners();
       
       console.log('Filter system ready!');
@@ -256,7 +259,6 @@
       .map(pill => pill.dataset.type);
     
     const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
-    const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
     const RADIUS_MILES = 30;
     
@@ -293,9 +295,10 @@
         return false;
       }
       
-      if (smokingRequired && !property.smokingAllowed) {
-        return false;
-      }
+      // Room filters
+      if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
+      if (bedsFilter > 0 && property.beds < bedsFilter) return false;
+      if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
       
       return true;
     });
@@ -325,7 +328,27 @@
     });
     
     document.getElementById('pets-toggle').classList.remove('active');
-    document.getElementById('smoking-toggle').classList.remove('active');
+    
+    // Reset room filters
+    bedroomsFilter = 0;
+    bedsFilter = 0;
+    bathroomsFilter = 0;
+    
+    const bedroomsCount = document.getElementById('bedrooms-count');
+    const bedsCount = document.getElementById('beds-count');
+    const bathroomsCount = document.getElementById('bathrooms-count');
+    
+    const bedroomsMinus = document.getElementById('bedrooms-minus');
+    const bedsMinus = document.getElementById('beds-minus');
+    const bathroomsMinus = document.getElementById('bathrooms-minus');
+    
+    if (bedroomsCount) bedroomsCount.textContent = 'Any';
+    if (bedsCount) bedsCount.textContent = 'Any';
+    if (bathroomsCount) bathroomsCount.textContent = 'Any';
+    
+    if (bedroomsMinus) bedroomsMinus.classList.add('disabled-state');
+    if (bedsMinus) bedsMinus.classList.add('disabled-state');
+    if (bathroomsMinus) bathroomsMinus.classList.add('disabled-state');
     
     updateResultsCount();
   }
@@ -343,109 +366,53 @@
   // ============================================
   
   function setupPriceSliders() {
-    const priceMin = actualMinPrice;
-    const priceMax = actualMaxPrice;
+    const minSlider = document.getElementById('price-min-slider');
+    const maxSlider = document.getElementById('price-max-slider');
+    const minDisplay = document.getElementById('price-min-display');
+    const maxDisplay = document.getElementById('price-max-display');
+    const track = document.getElementById('slider-track');
     
-    // Generate histogram
-    const histogramBars = 30;
-    const priceRanges = [];
-    const step = (priceMax - priceMin) / histogramBars;
+    minSlider.min = actualMinPrice;
+    minSlider.max = actualMaxPrice;
+    minSlider.value = actualMinPrice;
     
-    for (let i = 0; i < histogramBars; i++) {
-      const rangeStart = priceMin + (i * step);
-      const rangeEnd = rangeStart + step;
-      
-      const count = allProperties.filter(p => 
-        p.priceMin >= rangeStart && p.priceMin < rangeEnd
-      ).length;
-      
-      priceRanges.push(count);
-    }
+    maxSlider.min = actualMinPrice;
+    maxSlider.max = actualMaxPrice;
+    maxSlider.value = actualMaxPrice;
     
-    const maxCount = Math.max(...priceRanges);
-    
-    // Create histogram bars
-    const histogramContainer = document.getElementById('price-histogram');
-    if (histogramContainer) {
-      histogramContainer.innerHTML = '';
-      
-      priceRanges.forEach((count, i) => {
-        const bar = document.createElement('div');
-        bar.className = 'histogram-bar';
-        bar.dataset.index = i;
-        
-        const height = maxCount > 0 ? 20 + (count / maxCount * 80) : 20;
-        bar.style.height = `${height}%`;
-        
-        histogramContainer.appendChild(bar);
-      });
-    }
-    
-    // Setup dual range slider
-    let currentMinPrice = priceMin;
-    let currentMaxPrice = priceMax;
-    
-    const minHandle = document.getElementById('price-slider-min');
-    const maxHandle = document.getElementById('price-slider-max');
-    const rangeEl = document.getElementById('price-slider-range');
-    const minLabel = document.getElementById('price-label-min');
-    const maxLabel = document.getElementById('price-label-max');
-    const track = document.querySelector('.price-slider-track');
-    
-    if (!minHandle || !maxHandle || !track) return;
+    minDisplay.textContent = '$' + actualMinPrice;
+    maxDisplay.textContent = '$' + actualMaxPrice;
     
     function updateSlider() {
-      const minPercent = ((currentMinPrice - priceMin) / (priceMax - priceMin)) * 100;
-      const maxPercent = ((currentMaxPrice - priceMin) / (priceMax - priceMin)) * 100;
+      let minVal = parseInt(minSlider.value);
+      let maxVal = parseInt(maxSlider.value);
       
-      minHandle.style.left = `${minPercent}%`;
-      maxHandle.style.left = `${maxPercent}%`;
-      rangeEl.style.left = `${minPercent}%`;
-      rangeEl.style.width = `${maxPercent - minPercent}%`;
-      
-      minLabel.textContent = `$${Math.round(currentMinPrice)}`;
-      maxLabel.textContent = `$${Math.round(currentMaxPrice)}`;
-      
-      // Update histogram
-      document.querySelectorAll('.histogram-bar').forEach((bar, i) => {
-        const barPrice = priceMin + (i * step);
-        if (barPrice >= currentMinPrice && barPrice <= currentMaxPrice) {
-          bar.classList.add('in-range');
+      if (minVal >= maxVal) {
+        if (this === minSlider) {
+          maxSlider.value = minVal + 1;
+          maxVal = minVal + 1;
         } else {
-          bar.classList.remove('in-range');
+          minSlider.value = maxVal - 1;
+          minVal = maxVal - 1;
         }
-      });
-    }
-    
-    // Drag handlers
-    let isDragging = null;
-    
-    minHandle.addEventListener('mousedown', () => isDragging = 'min');
-    maxHandle.addEventListener('mousedown', () => isDragging = 'max');
-    
-    document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      
-      const rect = track.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const percent = Math.max(0, Math.min(100, (x / rect.width) * 100));
-      const price = priceMin + (percent / 100) * (priceMax - priceMin);
-      
-      if (isDragging === 'min' && price < currentMaxPrice - 10) {
-        currentMinPrice = price;
-      } else if (isDragging === 'max' && price > currentMinPrice + 10) {
-        currentMaxPrice = price;
       }
       
-      updateSlider();
-    });
+      minDisplay.textContent = '$' + minVal;
+      maxDisplay.textContent = '$' + maxVal;
+      
+      const percentMin = ((minVal - actualMinPrice) / (actualMaxPrice - actualMinPrice)) * 100;
+      const percentMax = ((maxVal - actualMinPrice) / (actualMaxPrice - actualMinPrice)) * 100;
+      
+      track.style.left = percentMin + '%';
+      track.style.width = (percentMax - percentMin) + '%';
+      
+      updateResultsCount();
+    }
     
-    document.addEventListener('mouseup', () => isDragging = null);
+    minSlider.addEventListener('input', updateSlider);
+    maxSlider.addEventListener('input', updateSlider);
     
-    // Expose currentPrices globally
-    window.getCurrentPriceRange = () => ({ min: currentMinPrice, max: currentMaxPrice });
-    
-    updateSlider();
+    updateSlider.call(minSlider);
   }
   
   // ============================================
@@ -473,6 +440,108 @@
   }
   
   // ============================================
+  // ROOM SELECTORS (Bedrooms/Beds/Bathrooms)
+  // ============================================
+  
+  function setupRoomSelectors() {
+    // Bedrooms
+    const bedroomsCount = document.getElementById('bedrooms-count');
+    const bedroomsMinus = document.getElementById('bedrooms-minus');
+    const bedroomsPlus = document.getElementById('bedrooms-plus');
+    
+    if (bedroomsMinus && bedroomsPlus && bedroomsCount) {
+      // Set initial state
+      bedroomsMinus.classList.add('disabled-state');
+      
+      bedroomsMinus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bedroomsFilter > 0) {
+          bedroomsFilter--;
+          bedroomsCount.textContent = bedroomsFilter === 0 ? 'Any' : bedroomsFilter;
+          
+          // Toggle minus button opacity
+          if (bedroomsFilter === 0) {
+            this.classList.add('disabled-state');
+          }
+        }
+      });
+      
+      bedroomsPlus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bedroomsFilter < 10) {
+          bedroomsFilter++;
+          bedroomsCount.textContent = bedroomsFilter;
+          bedroomsMinus.classList.remove('disabled-state');
+        }
+      });
+    }
+    
+    // Beds
+    const bedsCount = document.getElementById('beds-count');
+    const bedsMinus = document.getElementById('beds-minus');
+    const bedsPlus = document.getElementById('beds-plus');
+    
+    if (bedsMinus && bedsPlus && bedsCount) {
+      // Set initial state
+      bedsMinus.classList.add('disabled-state');
+      
+      bedsMinus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bedsFilter > 0) {
+          bedsFilter--;
+          bedsCount.textContent = bedsFilter === 0 ? 'Any' : bedsFilter;
+          
+          // Toggle minus button opacity
+          if (bedsFilter === 0) {
+            this.classList.add('disabled-state');
+          }
+        }
+      });
+      
+      bedsPlus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bedsFilter < 20) {
+          bedsFilter++;
+          bedsCount.textContent = bedsFilter;
+          bedsMinus.classList.remove('disabled-state');
+        }
+      });
+    }
+    
+    // Bathrooms
+    const bathroomsCount = document.getElementById('bathrooms-count');
+    const bathroomsMinus = document.getElementById('bathrooms-minus');
+    const bathroomsPlus = document.getElementById('bathrooms-plus');
+    
+    if (bathroomsMinus && bathroomsPlus && bathroomsCount) {
+      // Set initial state
+      bathroomsMinus.classList.add('disabled-state');
+      
+      bathroomsMinus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bathroomsFilter > 0) {
+          bathroomsFilter--;
+          bathroomsCount.textContent = bathroomsFilter === 0 ? 'Any' : bathroomsFilter;
+          
+          // Toggle minus button opacity
+          if (bathroomsFilter === 0) {
+            this.classList.add('disabled-state');
+          }
+        }
+      });
+      
+      bathroomsPlus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bathroomsFilter < 10) {
+          bathroomsFilter++;
+          bathroomsCount.textContent = bathroomsFilter;
+          bathroomsMinus.classList.remove('disabled-state');
+        }
+      });
+    }
+  }
+  
+  // ============================================
   // EVENT LISTENERS
   // ============================================
   
@@ -493,11 +562,6 @@
     });
     
     document.getElementById('pets-toggle').addEventListener('click', function() {
-      this.classList.toggle('active');
-      updateResultsCount();
-    });
-    
-    document.getElementById('smoking-toggle').addEventListener('click', function() {
       this.classList.toggle('active');
       updateResultsCount();
     });
@@ -863,28 +927,7 @@ async function initMapDrivenFiltering(searchCoords) {
     
     console.log('🗺️ Map-driven filtering initialized with', allCards.length, 'cards');
     
-    // Set max bounds to limit zoom/pan to reasonable area around properties
-    // Calculate bounds from all property locations
-    const propertyLatLngs = [];
-    allCards.forEach(card => {
-      const lat = parseFloat(card.getAttribute('data-lat'));
-      const lng = parseFloat(card.getAttribute('data-lng'));
-      if (!isNaN(lat) && !isNaN(lng)) {
-        propertyLatLngs.push([lat, lng]);
-      }
-    });
-    
-    if (propertyLatLngs.length > 0) {
-      // Create bounds from all properties with padding
-      const bounds = L.latLngBounds(propertyLatLngs);
-      const paddedBounds = bounds.pad(0.5); // Add 50% padding
-      
-      // Set max bounds to prevent zooming too far out
-      map.setMaxBounds(paddedBounds);
-      map.setMinZoom(2); // Prevent zooming out too much
-      
-      console.log('🗺️ Map bounds limited to property area');
-    }
+    // DON'T restrict map bounds - user should be able to zoom out freely
     
     // Center map on search location if provided
     if (searchCoords && searchCoords.lat && searchCoords.lng) {
@@ -896,7 +939,18 @@ async function initMapDrivenFiltering(searchCoords) {
   // Function to update cards based on map bounds
   function updateCardsFromMapBounds() {
     console.log('🔄 updateCardsFromMapBounds called');
-    performFiltering();
+    
+    // Show brief loading state
+    const allCards = document.querySelectorAll('[data-listings-id]');
+    allCards.forEach(card => {
+      card.style.opacity = '0.4';
+      card.style.transition = 'opacity 0.15s ease-out';
+    });
+    
+    // Use setTimeout to show loading state briefly
+    setTimeout(() => {
+      performFiltering();
+    }, 100);
   }
   
   function performFiltering() {
@@ -939,13 +993,28 @@ async function initMapDrivenFiltering(searchCoords) {
       // Show card if in bounds AND available AND passes filters
       if (isInBounds && isAvailable && passesFilters) {
         card.style.display = '';
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(10px)';
+        card.style.transition = 'opacity 0.4s ease-out, transform 0.4s ease-out';
         visibleCount++;
       } else {
+        // Hide immediately, no animation for out-of-bounds cards
         card.style.display = 'none';
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(10px)';
       }
     });
     
     console.log(`🗺️ Showing ${visibleCount} properties in current map view`);
+    
+    // Stagger animation for visible cards
+    const visibleCards = Array.from(allCards).filter(card => card.style.display !== 'none');
+    visibleCards.forEach((card, index) => {
+      setTimeout(() => {
+        card.style.opacity = '1';
+        card.style.transform = 'translateY(0)';
+      }, index * 30); // 30ms stagger
+    });
     updateResultsCount(visibleCount);
     
     // If no properties found, try zooming out to find nearest ones
@@ -984,11 +1053,18 @@ async function initMapDrivenFiltering(searchCoords) {
     }
     
     // Amenities filters
-    const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
-    const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
+    const petsRequired = document.getElementById('pets-toggle') ? document.getElementById('pets-toggle').classList.contains('active') : false;
     
     if (petsRequired && !property.petsAllowed) return false;
-    if (smokingRequired && !property.smokingAllowed) return false;
+    
+    // Room filters - access from parent scope
+    const bedroomsFilter = window.bedroomsFilter || 0;
+    const bedsFilter = window.bedsFilter || 0;
+    const bathroomsFilter = window.bathroomsFilter || 0;
+    
+    if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
+    if (bedsFilter > 0 && property.beds < bedsFilter) return false;
+    if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
     
     return true;
   }
