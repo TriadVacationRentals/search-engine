@@ -336,9 +336,17 @@
     const bedsCount = document.getElementById('beds-count');
     const bathroomsCount = document.getElementById('bathrooms-count');
     
+    const bedroomsMinus = document.getElementById('bedrooms-minus');
+    const bedsMinus = document.getElementById('beds-minus');
+    const bathroomsMinus = document.getElementById('bathrooms-minus');
+    
     if (bedroomsCount) bedroomsCount.textContent = 'Any';
     if (bedsCount) bedsCount.textContent = 'Any';
     if (bathroomsCount) bathroomsCount.textContent = 'Any';
+    
+    if (bedroomsMinus) bedroomsMinus.classList.add('disabled-state');
+    if (bedsMinus) bedsMinus.classList.add('disabled-state');
+    if (bathroomsMinus) bathroomsMinus.classList.add('disabled-state');
     
     updateResultsCount();
   }
@@ -356,109 +364,54 @@
   // ============================================
   
   function setupPriceSliders() {
-    const priceMin = actualMinPrice;
-    const priceMax = actualMaxPrice;
+    const minSlider = document.getElementById('price-min-slider');
+    const maxSlider = document.getElementById('price-max-slider');
+    const minDisplay = document.getElementById('price-min-display');
+    const maxDisplay = document.getElementById('price-max-display');
+    const track = document.getElementById('slider-track');
     
-    // Generate histogram
-    const histogramBars = 30;
-    const priceRanges = [];
-    const step = (priceMax - priceMin) / histogramBars;
+    if (!minSlider || !maxSlider || !minDisplay || !maxDisplay || !track) return;
     
-    for (let i = 0; i < histogramBars; i++) {
-      const rangeStart = priceMin + (i * step);
-      const rangeEnd = rangeStart + step;
-      
-      const count = allProperties.filter(p => 
-        p.priceMin >= rangeStart && p.priceMin < rangeEnd
-      ).length;
-      
-      priceRanges.push(count);
-    }
+    // Set actual min/max from data
+    minSlider.min = actualMinPrice;
+    minSlider.max = actualMaxPrice;
+    minSlider.value = actualMinPrice;
     
-    const maxCount = Math.max(...priceRanges);
+    maxSlider.min = actualMinPrice;
+    maxSlider.max = actualMaxPrice;
+    maxSlider.value = actualMaxPrice;
     
-    // Create histogram bars
-    const histogramContainer = document.getElementById('price-histogram');
-    if (histogramContainer) {
-      histogramContainer.innerHTML = '';
-      
-      priceRanges.forEach((count, i) => {
-        const bar = document.createElement('div');
-        bar.className = 'histogram-bar';
-        bar.dataset.index = i;
-        
-        const height = maxCount > 0 ? 20 + (count / maxCount * 80) : 20;
-        bar.style.height = `${height}%`;
-        
-        histogramContainer.appendChild(bar);
-      });
-    }
-    
-    // Setup dual range slider
-    let currentMinPrice = priceMin;
-    let currentMaxPrice = priceMax;
-    
-    const minHandle = document.getElementById('price-slider-min');
-    const maxHandle = document.getElementById('price-slider-max');
-    const rangeEl = document.getElementById('price-slider-range');
-    const minLabel = document.getElementById('price-label-min');
-    const maxLabel = document.getElementById('price-label-max');
-    const track = document.querySelector('.price-slider-track');
-    
-    if (!minHandle || !maxHandle || !track) return;
+    minDisplay.textContent = '$' + actualMinPrice;
+    maxDisplay.textContent = '$' + actualMaxPrice;
     
     function updateSlider() {
-      const minPercent = ((currentMinPrice - priceMin) / (priceMax - priceMin)) * 100;
-      const maxPercent = ((currentMaxPrice - priceMin) / (priceMax - priceMin)) * 100;
+      let minVal = parseInt(minSlider.value);
+      let maxVal = parseInt(maxSlider.value);
       
-      minHandle.style.left = `${minPercent}%`;
-      maxHandle.style.left = `${maxPercent}%`;
-      rangeEl.style.left = `${minPercent}%`;
-      rangeEl.style.width = `${maxPercent - minPercent}%`;
-      
-      minLabel.textContent = `$${Math.round(currentMinPrice)}`;
-      maxLabel.textContent = `$${Math.round(currentMaxPrice)}`;
-      
-      // Update histogram
-      document.querySelectorAll('.histogram-bar').forEach((bar, i) => {
-        const barPrice = priceMin + (i * step);
-        if (barPrice >= currentMinPrice && barPrice <= currentMaxPrice) {
-          bar.classList.add('in-range');
+      if (minVal >= maxVal) {
+        if (this === minSlider) {
+          maxSlider.value = minVal + 1;
+          maxVal = minVal + 1;
         } else {
-          bar.classList.remove('in-range');
+          minSlider.value = maxVal - 1;
+          minVal = maxVal - 1;
         }
-      });
-    }
-    
-    // Drag handlers
-    let isDragging = null;
-    
-    minHandle.addEventListener('mousedown', () => isDragging = 'min');
-    maxHandle.addEventListener('mousedown', () => isDragging = 'max');
-    
-    document.addEventListener('mousemove', (e) => {
-      if (!isDragging) return;
-      
-      const rect = track.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const percent = Math.max(0, Math.min(100, (x / rect.width) * 100));
-      const price = priceMin + (percent / 100) * (priceMax - priceMin);
-      
-      if (isDragging === 'min' && price < currentMaxPrice - 10) {
-        currentMinPrice = price;
-      } else if (isDragging === 'max' && price > currentMinPrice + 10) {
-        currentMaxPrice = price;
       }
       
-      updateSlider();
-    });
+      minDisplay.textContent = '$' + minVal;
+      maxDisplay.textContent = '$' + maxVal;
+      
+      const percentMin = ((minVal - actualMinPrice) / (actualMaxPrice - actualMinPrice)) * 100;
+      const percentMax = ((maxVal - actualMinPrice) / (actualMaxPrice - actualMinPrice)) * 100;
+      
+      track.style.left = percentMin + '%';
+      track.style.width = (percentMax - percentMin) + '%';
+    }
     
-    document.addEventListener('mouseup', () => isDragging = null);
+    minSlider.addEventListener('input', updateSlider);
+    maxSlider.addEventListener('input', updateSlider);
     
-    // Expose currentPrices globally
-    window.getCurrentPriceRange = () => ({ min: currentMinPrice, max: currentMaxPrice });
-    
-    updateSlider();
+    updateSlider.call(minSlider);
   }
   
   // ============================================
@@ -496,11 +449,19 @@
     const bedroomsPlus = document.getElementById('bedrooms-plus');
     
     if (bedroomsMinus && bedroomsPlus && bedroomsCount) {
+      // Set initial state
+      bedroomsMinus.classList.add('disabled-state');
+      
       bedroomsMinus.addEventListener('click', function(e) {
         e.stopPropagation();
         if (bedroomsFilter > 0) {
           bedroomsFilter--;
           bedroomsCount.textContent = bedroomsFilter === 0 ? 'Any' : bedroomsFilter;
+          
+          // Toggle minus button opacity
+          if (bedroomsFilter === 0) {
+            this.classList.add('disabled-state');
+          }
         }
       });
       
@@ -509,6 +470,7 @@
         if (bedroomsFilter < 10) {
           bedroomsFilter++;
           bedroomsCount.textContent = bedroomsFilter;
+          bedroomsMinus.classList.remove('disabled-state');
         }
       });
     }
@@ -519,11 +481,19 @@
     const bedsPlus = document.getElementById('beds-plus');
     
     if (bedsMinus && bedsPlus && bedsCount) {
+      // Set initial state
+      bedsMinus.classList.add('disabled-state');
+      
       bedsMinus.addEventListener('click', function(e) {
         e.stopPropagation();
         if (bedsFilter > 0) {
           bedsFilter--;
           bedsCount.textContent = bedsFilter === 0 ? 'Any' : bedsFilter;
+          
+          // Toggle minus button opacity
+          if (bedsFilter === 0) {
+            this.classList.add('disabled-state');
+          }
         }
       });
       
@@ -532,6 +502,7 @@
         if (bedsFilter < 20) {
           bedsFilter++;
           bedsCount.textContent = bedsFilter;
+          bedsMinus.classList.remove('disabled-state');
         }
       });
     }
@@ -542,11 +513,19 @@
     const bathroomsPlus = document.getElementById('bathrooms-plus');
     
     if (bathroomsMinus && bathroomsPlus && bathroomsCount) {
+      // Set initial state
+      bathroomsMinus.classList.add('disabled-state');
+      
       bathroomsMinus.addEventListener('click', function(e) {
         e.stopPropagation();
         if (bathroomsFilter > 0) {
           bathroomsFilter--;
           bathroomsCount.textContent = bathroomsFilter === 0 ? 'Any' : bathroomsFilter;
+          
+          // Toggle minus button opacity
+          if (bathroomsFilter === 0) {
+            this.classList.add('disabled-state');
+          }
         }
       });
       
@@ -555,6 +534,7 @@
         if (bathroomsFilter < 10) {
           bathroomsFilter++;
           bathroomsCount.textContent = bathroomsFilter;
+          bathroomsMinus.classList.remove('disabled-state');
         }
       });
     }
@@ -1021,10 +1001,10 @@ async function initMapDrivenFiltering(searchCoords) {
       
       // Show card if in bounds AND available AND passes filters
       if (isInBounds && isAvailable && passesFilters) {
-        card.style.display = '';
+        card.style.setProperty('display', 'block', 'important');
         visibleCount++;
       } else {
-        card.style.display = 'none';
+        card.style.setProperty('display', 'none', 'important');
       }
     });
     
