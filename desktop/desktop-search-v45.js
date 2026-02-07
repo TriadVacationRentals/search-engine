@@ -971,6 +971,15 @@ async function initMapDrivenFiltering(searchCoords) {
     if (searchCoords && searchCoords.lat && searchCoords.lng) {
       console.log('🗺️ Centering map on search location:', searchCoords);
       map.setView([searchCoords.lat, searchCoords.lng], 10);
+      
+      // Wait for map to finish centering before filtering
+      map.once('moveend', () => {
+        console.log('✅ Map finished centering');
+        setTimeout(updateCardsFromMapBounds, 300);
+      });
+    } else {
+      // No search location, trigger filtering immediately
+      setTimeout(updateCardsFromMapBounds, 500);
     }
   
   
@@ -1026,6 +1035,11 @@ async function initMapDrivenFiltering(searchCoords) {
       
       // Check if property is within map bounds
       const isInBounds = bounds.contains([lat, lng]);
+      
+      // Debug first 3 properties
+      if (visibleCount < 3) {
+        console.log(`Property ${listingId}: lat=${lat}, lng=${lng}, isInBounds=${isInBounds}`);
+      }
       
       // Apply availability filter if dates were searched
       let isAvailable = true;
@@ -1151,10 +1165,6 @@ async function initMapDrivenFiltering(searchCoords) {
   // Listen to map movement events
   map.on('moveend', updateCardsFromMapBounds);
   map.on('zoomend', updateCardsFromMapBounds);
-  
-  // Initial update - wait longer if we centered on search location
-  const initialDelay = (searchCoords && searchCoords.lat && searchCoords.lng) ? 1000 : 500;
-  setTimeout(updateCardsFromMapBounds, initialDelay);
   
   // Expose function globally for filter updates
   window.updateCardsFromMap = updateCardsFromMapBounds;
