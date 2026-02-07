@@ -66,8 +66,14 @@
       console.log('Fetching all properties...');
       await fetchAllProperties();
       
-      if (checkin && checkout) {
-        console.log('Has dates - checking availability...');
+      // Validate: If dates provided, location is REQUIRED
+      if ((checkin || checkout) && !location) {
+        console.warn('Dates provided without location - showing all properties');
+        showError('Please enter a destination to search by dates');
+      }
+      
+      if (checkin && checkout && location) {
+        console.log('Has dates + location - checking availability...');
         await checkAvailability(checkin, checkout, guests || '2');
       }
       
