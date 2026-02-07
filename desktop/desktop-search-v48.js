@@ -979,12 +979,17 @@ async function initMapDrivenFiltering(searchCoords) {
     
     console.log('🔄 updateCardsFromMapBounds called');
     
-    // Show brief loading state
+    // Only show loading state if cards don't already have initial spinners
     const allCards = document.querySelectorAll('[data-listings-id]');
-    allCards.forEach(card => {
-      card.style.opacity = '0.4';
-      card.style.transition = 'opacity 0.15s ease-out';
-    });
+    const hasInitialSpinners = document.querySelector('.initial-loading-spinner');
+    
+    if (!hasInitialSpinners) {
+      // Show brief loading state (only if not initial load)
+      allCards.forEach(card => {
+        card.style.opacity = '0.4';
+        card.style.transition = 'opacity 0.15s ease-out';
+      });
+    }
     
     // Use setTimeout to show loading state briefly
     setTimeout(() => {
@@ -1061,14 +1066,18 @@ async function initMapDrivenFiltering(searchCoords) {
     
     console.log(`🗺️ Filtering complete: ${visibleCount} of ${allCards.length} properties in bounds`);
     
-    // Stagger animation for visible cards
+    // Stagger animation ONLY for visible cards
     const visibleCards = Array.from(allCards).filter(card => card.style.display !== 'none');
+    
+    console.log(`🎬 Animating ${visibleCards.length} visible cards`);
+    
     visibleCards.forEach((card, index) => {
       setTimeout(() => {
         card.style.opacity = '1';
         card.style.transform = 'translateY(0)';
       }, index * 30); // 30ms stagger
     });
+    
     updateResultsCount(visibleCount);
     
     // If no properties found, try zooming out to find nearest ones
