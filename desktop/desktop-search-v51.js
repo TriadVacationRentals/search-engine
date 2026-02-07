@@ -1179,43 +1179,53 @@ async function initMapDrivenFiltering(searchCoords) {
   
   // Center map on search location if provided
   if (searchCoords && searchCoords.lat && searchCoords.lng) {
-    console.log('🗺️ Centering map on search location:', searchCoords);
+    console.log('🗺️ Will center map on search location:', searchCoords);
     
-    try {
-      map.setView([searchCoords.lat, searchCoords.lng], 10);
+    // Wait a bit for map to fully initialize before centering
+    setTimeout(() => {
+      console.log('🗺️ NOW centering map...');
       
-      // Wait for centering to complete, THEN attach listeners
-      map.once('moveend', () => {
-        console.log('✅ Map finished centering on search location');
+      try {
+        map.setView([searchCoords.lat, searchCoords.lng], 10);
         
-        // NOW attach the movement listeners
-        map.on('moveend', updateCardsFromMapBounds);
-        map.on('zoomend', updateCardsFromMapBounds);
-        
-        // Trigger initial filtering with longer delay to ensure map is settled
-        setTimeout(() => {
-          console.log('⚡ Triggering initial filtering after map center');
-          updateCardsFromMapBounds();
-        }, 500);
-      });
-      
-      // Fallback: If moveend doesn't fire within 3 seconds, force trigger
-      setTimeout(() => {
-        if (!window.updateCardsFromMap) {
-          console.warn('⚠️ Map moveend event did not fire - forcing initialization');
+        // Wait for centering to complete, THEN attach listeners
+        map.once('moveend', () => {
+          const finalCenter = map.getCenter();
+          console.log('✅ Map finished centering. Final position:', {
+            lat: finalCenter.lat,
+            lng: finalCenter.lng,
+            zoom: map.getZoom()
+          });
+          
+          // NOW attach the movement listeners
           map.on('moveend', updateCardsFromMapBounds);
           map.on('zoomend', updateCardsFromMapBounds);
-          updateCardsFromMapBounds();
-        }
-      }, 3000);
-      
-    } catch (error) {
-      console.error('❌ Error centering map:', error);
-      // Fallback: attach listeners and filter anyway
-      map.on('moveend', updateCardsFromMapBounds);
-      map.on('zoomend', updateCardsFromMapBounds);
-      updateCardsFromMapBounds();
-    }
+          
+          // Trigger initial filtering with longer delay to ensure map is settled
+          setTimeout(() => {
+            console.log('⚡ Triggering initial filtering after map center');
+            updateCardsFromMapBounds();
+          }, 500);
+        });
+        
+        // Fallback: If moveend doesn't fire within 3 seconds, force trigger
+        setTimeout(() => {
+          if (!window.updateCardsFromMap) {
+            console.warn('⚠️ Map moveend event did not fire - forcing initialization');
+            map.on('moveend', updateCardsFromMapBounds);
+            map.on('zoomend', updateCardsFromMapBounds);
+            updateCardsFromMapBounds();
+          }
+        }, 3000);
+        
+      } catch (error) {
+        console.error('❌ Error centering map:', error);
+        // Fallback: attach listeners and filter anyway
+        map.on('moveend', updateCardsFromMapBounds);
+        map.on('zoomend', updateCardsFromMapBounds);
+        updateCardsFromMapBounds();
+      }
+    }, 1000); // Wait 1 second for map to initialize
   } else {
     console.log('ℹ️ No search coordinates - showing all properties in default view');
     // No search location - attach listeners immediately
