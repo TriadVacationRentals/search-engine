@@ -867,8 +867,6 @@ async function initMapDrivenFiltering(searchCoords) {
       // Apply other filters (price, type, amenities)
       const passesFilters = passesOtherFilters(card);
       
-      console.log(`Card ${listingId}: inBounds=${isInBounds}, available=${isAvailable}, passesFilters=${passesFilters}`);
-      
       // Show card if in bounds AND available AND passes filters
       if (isInBounds && isAvailable && passesFilters) {
         card.style.display = '';
@@ -877,14 +875,10 @@ async function initMapDrivenFiltering(searchCoords) {
         card.style.transition = 'opacity 0.4s ease-out, transform 0.4s ease-out';
         visibleCount++;
       } else {
+        // Hide immediately, no animation for out-of-bounds cards
+        card.style.display = 'none';
         card.style.opacity = '0';
-        card.style.transition = 'opacity 0.2s ease-out';
-        
-        setTimeout(() => {
-          if (card.style.opacity === '0') {
-            card.style.display = 'none';
-          }
-        }, 200);
+        card.style.transform = 'translateY(10px)';
       }
     });
     
