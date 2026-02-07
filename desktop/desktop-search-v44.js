@@ -78,6 +78,40 @@
       console.log('Fetching all properties...');
       await fetchAllProperties();
       
+      // Show loading state on all cards immediately
+      const allCards = document.querySelectorAll('[data-listings-id]');
+      allCards.forEach(card => {
+        card.style.opacity = '0.4';
+        card.style.transition = 'opacity 0.2s ease-out';
+        card.style.position = 'relative';
+        
+        // Add spinner
+        const spinner = document.createElement('div');
+        spinner.className = 'initial-loading-spinner';
+        spinner.innerHTML = `
+          <style>
+            @keyframes initialSpin {
+              0% { transform: translate(-50%, -50%) rotate(0deg); }
+              100% { transform: translate(-50%, -50%) rotate(360deg); }
+            }
+          </style>
+        `;
+        spinner.style.cssText = `
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 24px;
+          height: 24px;
+          border: 3px solid rgba(0,0,0,0.1);
+          border-top-color: #16A8EE;
+          border-radius: 50%;
+          animation: initialSpin 0.8s linear infinite;
+          z-index: 100;
+        `;
+        card.appendChild(spinner);
+      });
+      
       // Get coordinates for radius filtering and map centering
       if (location) {
         console.log('Getting location coordinates...');
@@ -960,6 +994,14 @@ async function initMapDrivenFiltering(searchCoords) {
   function performFiltering() {
     const map = window.mapInstance;
     const allCards = document.querySelectorAll('[data-listings-id]');
+    
+    // Remove initial loading spinners
+    allCards.forEach(card => {
+      const spinner = card.querySelector('.initial-loading-spinner');
+      if (spinner) {
+        spinner.remove();
+      }
+    });
     
     const bounds = map.getBounds();
     console.log('📍 Map bounds:', bounds);
