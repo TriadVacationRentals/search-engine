@@ -1,6 +1,6 @@
 // ============================================
-// LISTINGS FILTER + SEARCH SYSTEM
-// GitHub: listings-filter-v1.js
+// LISTINGS SEARCH + FILTER SYSTEM
+// GitHub: desktop-search-v3.js
 // ============================================
 
 (function() {
@@ -29,14 +29,12 @@
   async function init() {
     console.log('Initializing filter system...');
     
-    // Read URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const location = urlParams.get('location');
     const checkin = urlParams.get('checkin');
     const checkout = urlParams.get('checkout');
     const guests = urlParams.get('guests');
     
-    // Set initial values
     if (location) {
       document.getElementById('location-input').value = location;
       selectedLocation = { description: location };
@@ -44,12 +42,12 @@
     
     if (checkin) {
       checkinDate = new Date(checkin);
-      document.getElementById('checkin-input').value = checkinDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      document.getElementById('checkin-display').value = checkinDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
     
     if (checkout) {
       checkoutDate = new Date(checkout);
-      document.getElementById('checkout-input').value = checkoutDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      document.getElementById('checkout-display').value = checkoutDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
     
     if (guests) {
@@ -57,15 +55,12 @@
       updateGuestDisplay();
     }
     
-    // Fetch all properties
     await fetchAllProperties();
     
-    // If dates provided, check availability
     if (checkin && checkout) {
       await checkAvailability(checkin, checkout, guests || '2');
     }
     
-    // Setup UI
     setupPriceSliders();
     buildPropertyTypeFilter();
     setupEventListeners();
@@ -139,29 +134,24 @@
     const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
     return allProperties.filter(function(property) {
-      // Availability check
       if (availablePropertyIds.length > 0) {
         if (!availablePropertyIds.includes(parseInt(property.listingId))) {
           return false;
         }
       }
       
-      // Price filter
       if (property.priceMin < priceMin || property.priceMax > priceMax) {
         return false;
       }
       
-      // Property type filter
       if (selectedTypes.length > 0 && !selectedTypes.includes(property.propertyType)) {
         return false;
       }
       
-      // Pets filter
       if (petsRequired && !property.petsAllowed) {
         return false;
       }
       
-      // Smoking filter
       if (smokingRequired && !property.smokingAllowed) {
         return false;
       }
@@ -181,12 +171,10 @@
       cardMap[id] = card;
     });
     
-    // Hide all
     cards.forEach(function(card) {
       card.style.display = 'none';
     });
     
-    // Show filtered
     const filteredCards = [];
     filtered.forEach(function(property) {
       const card = cardMap[property.listingId];
@@ -196,19 +184,16 @@
       }
     });
     
-    // Update map
     if (typeof window.updateMapMarkers === 'function') {
       window.updateMapMarkers(filteredCards);
     }
     
-    // Close dropdown
     document.getElementById('filter-dropdown').classList.remove('active');
     
     console.log(`Showing ${filtered.length} of ${allProperties.length} properties`);
   }
   
   function clearFilters() {
-    // Reset sliders
     document.getElementById('price-min-slider').value = actualMinPrice;
     document.getElementById('price-max-slider').value = actualMaxPrice;
     document.getElementById('price-min-display').textContent = '$' + actualMinPrice;
@@ -218,12 +203,10 @@
     track.style.left = '0%';
     track.style.width = '100%';
     
-    // Deselect types
     document.querySelectorAll('.property-type-pill').forEach(function(pill) {
       pill.classList.remove('active');
     });
     
-    // Deselect toggles
     document.getElementById('pets-toggle').classList.remove('active');
     document.getElementById('smoking-toggle').classList.remove('active');
     
@@ -321,13 +304,11 @@
   // ============================================
   
   function setupEventListeners() {
-    // Filter button
     document.getElementById('filter-btn').addEventListener('click', function(e) {
       e.stopPropagation();
       document.getElementById('filter-dropdown').classList.toggle('active');
     });
     
-    // Close dropdown
     document.addEventListener('click', function(e) {
       const dropdown = document.getElementById('filter-dropdown');
       const filterBtn = document.getElementById('filter-btn');
@@ -337,7 +318,6 @@
       }
     });
     
-    // Toggles
     document.getElementById('pets-toggle').addEventListener('click', function() {
       this.classList.toggle('active');
       updateResultsCount();
@@ -348,14 +328,11 @@
       updateResultsCount();
     });
     
-    // Clear/Apply
     document.getElementById('filter-clear').addEventListener('click', clearFilters);
     document.getElementById('filter-apply').addEventListener('click', applyFilters);
     
-    // Search button
     document.getElementById('search-btn').addEventListener('click', handleSearch);
     
-    // Setup search bar
     setupSearchBar();
   }
   
@@ -520,8 +497,8 @@
         if (type === 'checkin') {
           checkinDate = date;
           checkoutDate = null;
-          document.getElementById('checkin-input').value = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          document.getElementById('checkout-input').value = '';
+          document.getElementById('checkin-display').value = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          document.getElementById('checkout-display').value = 'Add date';
           
           renderCalendar('checkin');
           renderCalendar('checkout');
@@ -533,7 +510,7 @@
             return;
           }
           checkoutDate = date;
-          document.getElementById('checkout-input').value = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          document.getElementById('checkout-display').value = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           
           renderCalendar('checkin');
           renderCalendar('checkout');
@@ -546,7 +523,7 @@
   
   function setupGuests() {
     const guestsField = document.getElementById('guests-field');
-    const guestsPopup = document.getElementById('guest-popup');
+    const guestsPopup = document.getElementById('guests-popup');
     
     guestsField.addEventListener('click', function(e) {
       e.stopPropagation();
@@ -573,7 +550,7 @@
   
   function updateGuestDisplay() {
     document.getElementById('guest-count').textContent = guestCount;
-    document.getElementById('guests-input').value = `${guestCount} ${guestCount === 1 ? 'guest' : 'guests'}`;
+    document.getElementById('guests-display').value = `${guestCount} ${guestCount === 1 ? 'guest' : 'guests'}`;
   }
   
   async function handleSearch() {
