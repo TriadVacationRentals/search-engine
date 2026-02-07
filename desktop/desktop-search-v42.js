@@ -229,7 +229,11 @@
           lat: detailsData.result.geometry.location.lat,
           lng: detailsData.result.geometry.location.lng
         };
-        console.log('Search location coords:', searchLocationCoords);
+        
+        // Sync to global state
+        window.filterState.searchLocationCoords = searchLocationCoords;
+        
+        console.log('✅ Search location coords:', searchLocationCoords);
       }
     } catch (error) {
       console.error('Failed to get location coordinates:', error);
@@ -1106,8 +1110,9 @@ async function initMapDrivenFiltering(searchCoords) {
   map.on('moveend', updateCardsFromMapBounds);
   map.on('zoomend', updateCardsFromMapBounds);
   
-  // Initial update
-  setTimeout(updateCardsFromMapBounds, 500);
+  // Initial update - wait longer if we centered on search location
+  const initialDelay = (searchCoords && searchCoords.lat && searchCoords.lng) ? 1000 : 500;
+  setTimeout(updateCardsFromMapBounds, initialDelay);
   
   // Expose function globally for filter updates
   window.updateCardsFromMap = updateCardsFromMapBounds;
