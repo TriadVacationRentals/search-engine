@@ -805,12 +805,18 @@ async function initMapDrivenFiltering(searchCoords) {
   
   // Function to update cards based on map bounds
   function updateCardsFromMapBounds() {
+    console.log('🔄 updateCardsFromMapBounds called');
+    
     const bounds = map.getBounds();
+    console.log('📍 Map bounds:', bounds);
+    
     let visibleCount = 0;
     
     const filterState = window.filterState || {};
     const availableIds = filterState.availablePropertyIds || [];
     const didCheck = filterState.didCheckAvailability || false;
+    
+    console.log('Filter state:', { didCheck, availableIdsCount: availableIds.length });
     
     allCards.forEach(card => {
       const lat = parseFloat(card.getAttribute('data-lat'));
