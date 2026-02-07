@@ -298,6 +298,11 @@
         return false;
       }
       
+      // Room filters
+      if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
+      if (bedsFilter > 0 && property.beds < bedsFilter) return false;
+      if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
+      
       return true;
     });
   }
@@ -370,9 +375,6 @@
     const maxDisplay = document.getElementById('price-max-display');
     const track = document.getElementById('slider-track');
     
-    if (!minSlider || !maxSlider || !minDisplay || !maxDisplay || !track) return;
-    
-    // Set actual min/max from data
     minSlider.min = actualMinPrice;
     minSlider.max = actualMaxPrice;
     minSlider.value = actualMinPrice;
@@ -406,6 +408,8 @@
       
       track.style.left = percentMin + '%';
       track.style.width = (percentMax - percentMin) + '%';
+      
+      updateResultsCount();
     }
     
     minSlider.addEventListener('input', updateSlider);
@@ -1001,10 +1005,10 @@ async function initMapDrivenFiltering(searchCoords) {
       
       // Show card if in bounds AND available AND passes filters
       if (isInBounds && isAvailable && passesFilters) {
-        card.style.setProperty('display', 'block', 'important');
+        card.style.display = '';
         visibleCount++;
       } else {
-        card.style.setProperty('display', 'none', 'important');
+        card.style.display = 'none';
       }
     });
     
@@ -1047,11 +1051,15 @@ async function initMapDrivenFiltering(searchCoords) {
     }
     
     // Amenities filters
-    const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
+    const petsRequired = document.getElementById('pets-toggle') ? document.getElementById('pets-toggle').classList.contains('active') : false;
     
     if (petsRequired && !property.petsAllowed) return false;
     
-    // Room filters
+    // Room filters - access from parent scope
+    const bedroomsFilter = window.bedroomsFilter || 0;
+    const bedsFilter = window.bedsFilter || 0;
+    const bathroomsFilter = window.bathroomsFilter || 0;
+    
     if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
     if (bedsFilter > 0 && property.beds < bedsFilter) return false;
     if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
