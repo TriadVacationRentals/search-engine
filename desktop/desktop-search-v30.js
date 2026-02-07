@@ -34,6 +34,11 @@
   let currentCheckinMonth = new Date();
   let currentCheckoutMonth = new Date();
   
+  // Room filters
+  let bedroomsFilter = 0; // 0 = Any
+  let bedsFilter = 0; // 0 = Any
+  let bathroomsFilter = 0; // 0 = Any
+  
   // ============================================
   // INITIALIZATION
   // ============================================
@@ -103,6 +108,7 @@
       console.log('Setting up UI...');
       setupPriceSliders();
       buildPropertyTypeFilter();
+      setupRoomSelectors();
       setupEventListeners();
       
       console.log('Filter system ready!');
@@ -327,6 +333,19 @@
     document.getElementById('pets-toggle').classList.remove('active');
     document.getElementById('smoking-toggle').classList.remove('active');
     
+    // Reset room filters
+    bedroomsFilter = 0;
+    bedsFilter = 0;
+    bathroomsFilter = 0;
+    
+    const bedroomsCount = document.getElementById('bedrooms-count');
+    const bedsCount = document.getElementById('beds-count');
+    const bathroomsCount = document.getElementById('bathrooms-count');
+    
+    if (bedroomsCount) bedroomsCount.textContent = 'Any';
+    if (bedsCount) bedsCount.textContent = 'Any';
+    if (bathroomsCount) bathroomsCount.textContent = 'Any';
+    
     updateResultsCount();
   }
   
@@ -470,6 +489,81 @@
       
       typesContainer.appendChild(pill);
     });
+  }
+  
+  // ============================================
+  // ROOM SELECTORS (Bedrooms/Beds/Bathrooms)
+  // ============================================
+  
+  function setupRoomSelectors() {
+    // Bedrooms
+    const bedroomsCount = document.getElementById('bedrooms-count');
+    const bedroomsMinus = document.getElementById('bedrooms-minus');
+    const bedroomsPlus = document.getElementById('bedrooms-plus');
+    
+    if (bedroomsMinus && bedroomsPlus && bedroomsCount) {
+      bedroomsMinus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bedroomsFilter > 0) {
+          bedroomsFilter--;
+          bedroomsCount.textContent = bedroomsFilter === 0 ? 'Any' : bedroomsFilter;
+        }
+      });
+      
+      bedroomsPlus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bedroomsFilter < 10) {
+          bedroomsFilter++;
+          bedroomsCount.textContent = bedroomsFilter;
+        }
+      });
+    }
+    
+    // Beds
+    const bedsCount = document.getElementById('beds-count');
+    const bedsMinus = document.getElementById('beds-minus');
+    const bedsPlus = document.getElementById('beds-plus');
+    
+    if (bedsMinus && bedsPlus && bedsCount) {
+      bedsMinus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bedsFilter > 0) {
+          bedsFilter--;
+          bedsCount.textContent = bedsFilter === 0 ? 'Any' : bedsFilter;
+        }
+      });
+      
+      bedsPlus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bedsFilter < 20) {
+          bedsFilter++;
+          bedsCount.textContent = bedsFilter;
+        }
+      });
+    }
+    
+    // Bathrooms
+    const bathroomsCount = document.getElementById('bathrooms-count');
+    const bathroomsMinus = document.getElementById('bathrooms-minus');
+    const bathroomsPlus = document.getElementById('bathrooms-plus');
+    
+    if (bathroomsMinus && bathroomsPlus && bathroomsCount) {
+      bathroomsMinus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bathroomsFilter > 0) {
+          bathroomsFilter--;
+          bathroomsCount.textContent = bathroomsFilter === 0 ? 'Any' : bathroomsFilter;
+        }
+      });
+      
+      bathroomsPlus.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (bathroomsFilter < 10) {
+          bathroomsFilter++;
+          bathroomsCount.textContent = bathroomsFilter;
+        }
+      });
+    }
   }
   
   // ============================================
@@ -989,6 +1083,11 @@ async function initMapDrivenFiltering(searchCoords) {
     
     if (petsRequired && !property.petsAllowed) return false;
     if (smokingRequired && !property.smokingAllowed) return false;
+    
+    // Room filters
+    if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
+    if (bedsFilter > 0 && property.beds < bedsFilter) return false;
+    if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
     
     return true;
   }
