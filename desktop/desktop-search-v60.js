@@ -1,6 +1,5 @@
 // ============================================
-// LISTINGS SEARCH + FILTER SYSTEM
-// GitHub: desktop-search-v3.js
+// LISTINGS SEARCH + FILTER SYSTEM - VIEWPORT DRIVEN
 // ============================================
 
 (function() {
@@ -8,19 +7,30 @@
   
   const WORKER_URL = 'https://hostaway-proxy.triad-sync.workers.dev';
   
+  // North Carolina default coordinates (Raleigh)
+  const DEFAULT_LOCATION = {
+    lat: 35.7796,
+    lng: -78.6382,
+    name: 'North Carolina'
+  };
+  
   // State
   let allProperties = [];
+  let visiblePropertyIds = [];
   let availablePropertyIds = [];
-  let didCheckAvailability = false; // Track if we checked dates
-  let searchLocationCoords = null; // Store search location coordinates
+  let didCheckAvailability = false;
+  let userLocation = null;
+  let searchLocationCoords = null;
   let actualMinPrice = Infinity;
   let actualMaxPrice = 0;
   
-  // Expose to global scope for map-driven filtering
+  // Expose to global scope
   window.filterState = {
     allProperties: [],
+    visiblePropertyIds: [],
     availablePropertyIds: [],
     didCheckAvailability: false,
+    userLocation: null,
     searchLocationCoords: null,
     actualMinPrice: Infinity,
     actualMaxPrice: 0
@@ -35,9 +45,9 @@
   let currentCheckoutMonth = new Date();
   
   // Room filters
-  let bedroomsFilter = 0; // 0 = Any
-  let bedsFilter = 0; // 0 = Any
-  let bathroomsFilter = 0; // 0 = Any
+  let bedroomsFilter = 0;
+  let bedsFilter = 0;
+  let bathroomsFilter = 0;
   
   // ============================================
   // INITIALIZATION
@@ -45,7 +55,7 @@
   
   async function init() {
     try {
-      console.log('Initializing filter system...');
+      console.log('🚀 Initializing viewport-driven filter system...');
       
       const urlParams = new URLSearchParams(window.location.search);
       const location = urlParams.get('location');
@@ -75,69 +85,106 @@
         updateGuestDisplay();
       }
       
-      console.log('Fetching all properties...');
-      await fetchAllProperties();
-      
-      // Show loading state on all cards immediately - just opacity fade
-      const allCards = document.querySelectorAll('[data-listings-id]');
-      allCards.forEach(card => {
-        card.style.opacity = '0.4';
-        card.style.transition = 'opacity 0.2s ease-out';
-      });
-      
-      // Get coordinates for radius filtering and map centering
+      // Detect user location or use URL location or default
       if (location) {
-        console.log('Getting location coordinates...');
+        console.log('📍 Using location from URL...');
         await getLocationCoordinates(location);
+      } else {
+        console.log('📍 Detecting user location...');
+        await detectUserLocation();
       }
       
-      // Initialize map-driven filtering (wait for map to load, then center if needed)
-      await initMapDrivenFiltering(searchLocationCoords);
+      // Fetch properties near the detected/default location
+      console.log('🔍 Fetching nearby properties...');
+      await fetchNearbyProperties(userLocation.lat, userLocation.lng, 50);
       
-      // Check availability if dates are provided
+      // Initialize map
+      await initMapDrivenFiltering(userLocation);
+      
+      // Check availability if dates provided
       if (checkin && checkout) {
         if (!location) {
-          console.warn('Dates without location - showing error');
           showError('Please enter a destination to search by dates');
         } else {
-          console.log('Has dates + location - checking availability...');
+          console.log('📅 Checking availability for dates...');
           await checkAvailability(checkin, checkout, guests || '2');
-          // After availability check, update cards from map
           if (window.updateCardsFromMap) {
             window.updateCardsFromMap();
           }
         }
       }
       
-      console.log('Setting up UI...');
+      console.log('🎨 Setting up UI...');
       setupPriceSliders();
       buildPropertyTypeFilter();
       setupRoomSelectors();
       setupEventListeners();
       
-      console.log('Filter system ready!');
+      console.log('✅ Filter system ready!');
     } catch (error) {
-      console.error('Init failed:', error);
+      console.error('❌ Init failed:', error);
     }
   }
   
   // ============================================
-  // FETCH DATA
+  // GEOLOCATION
   // ============================================
   
-  async function fetchAllProperties() {
+  async function detectUserLocation() {
+    return new Promise((resolve) => {
+      if ('geolocation' in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            userLocation = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+              name: 'Your location'
+            };
+            window.filterState.userLocation = userLocation;
+            console.log('✅ User location detected:', userLocation);
+            resolve();
+          },
+          (error) => {
+            console.log('⚠️ Geolocation denied or failed, using default (NC)');
+            userLocation = DEFAULT_LOCATION;
+            window.filterState.userLocation = userLocation;
+            resolve();
+          },
+          { timeout: 5000 }
+        );
+      } else {
+        console.log('ℹ️ Geolocation not available, using default (NC)');
+        userLocation = DEFAULT_LOCATION;
+        window.filterState.userLocation = userLocation;
+        resolve();
+      }
+    });
+  }
+  
+  // ============================================
+  // FETCH NEARBY PROPERTIES
+  // ============================================
+  
+  async function fetchNearbyProperties(lat, lng, radius) {
     try {
-      const response = await fetch(`${WORKER_URL}/api/webflow/properties`);
-      const data = await response.json();
+      const response = await fetch(
+        `${WORKER_URL}/api/properties/nearby?lat=${lat}&lng=${lng}&radius=${radius}`
+      );
       
-      if (!data.properties || data.properties.length === 0) {
-        console.error('No properties returned');
-        return;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
       }
       
-      allProperties = data.properties.filter(p => p.isLive);
-      window.filterState.allProperties = allProperties;
+      const data = await response.json();
       
+      allProperties = data.properties || [];
+      visiblePropertyIds = allProperties.map(p => parseInt(p.listingId));
+      
+      // Update global state
+      window.filterState.allProperties = allProperties;
+      window.filterState.visiblePropertyIds = visiblePropertyIds;
+      
+      // Calculate price range
       allProperties.forEach(function(property) {
         if (property.priceMin < actualMinPrice && property.priceMin > 0) {
           actualMinPrice = property.priceMin;
@@ -147,12 +194,19 @@
         }
       });
       
-      console.log(`Loaded ${allProperties.length} properties, price range: $${actualMinPrice}-$${actualMaxPrice}`);
+      window.filterState.actualMinPrice = actualMinPrice;
+      window.filterState.actualMaxPrice = actualMaxPrice;
+      
+      console.log(`✅ Loaded ${allProperties.length} nearby properties, price range: $${actualMinPrice}-$${actualMaxPrice}`);
       
     } catch (error) {
-      console.error('Failed to fetch properties:', error);
+      console.error('❌ Failed to fetch nearby properties:', error);
     }
   }
+  
+  // ============================================
+  // AVAILABILITY CHECK
+  // ============================================
   
   async function checkAvailability(checkin, checkout, guests) {
     try {
@@ -163,10 +217,8 @@
       
       console.log('Checking availability:', { checkin, checkout, guests });
       
-      // Show loading spinners on all cards
       showCardLoadingState(true);
       
-      // Build API URL with location coordinates if available
       let apiUrl = `${WORKER_URL}/api/search?checkin=${checkin}&checkout=${checkout}&guests=${guests}`;
       
       if (searchLocationCoords) {
@@ -174,7 +226,6 @@
         console.log('Filtering by location:', searchLocationCoords);
       }
       
-      // Call Worker to get available property IDs
       const response = await fetch(apiUrl);
       
       if (!response.ok) {
@@ -186,16 +237,14 @@
       availablePropertyIds = data.available || [];
       didCheckAvailability = true;
       
-      // Sync to global state
       window.filterState.availablePropertyIds = availablePropertyIds;
       window.filterState.didCheckAvailability = true;
       
       console.log(`✅ Worker returned ${availablePropertyIds.length} available properties:`, availablePropertyIds);
       
-      const el = document.getElementById('results-count'); if (el) el.textContent = 
-        `Found ${availablePropertyIds.length} available properties`;
+      const el = document.getElementById('results-count');
+      if (el) el.textContent = `Found ${availablePropertyIds.length} available properties`;
       
-      // Hide loading spinners
       showCardLoadingState(false);
       
     } catch (error) {
@@ -203,10 +252,10 @@
       availablePropertyIds = [];
       didCheckAvailability = true;
       
-      // Hide loading spinners on error
       showCardLoadingState(false);
       
-      const el = document.getElementById('results-count'); if (el) el.textContent = 'Failed to check availability';
+      const el = document.getElementById('results-count');
+      if (el) el.textContent = 'Failed to check availability';
     }
   }
   
@@ -214,7 +263,6 @@
     try {
       console.log('📍 Fetching coordinates for:', locationText);
       
-      // First get place_id from autocomplete
       const autocompleteResponse = await fetch(
         `${WORKER_URL}/api/places/autocomplete?input=${encodeURIComponent(locationText)}`
       );
@@ -230,7 +278,6 @@
       const placeId = autocompleteData.predictions[0].place_id;
       console.log('📍 Place ID:', placeId);
       
-      // Get coordinates from place details
       const detailsResponse = await fetch(
         `${WORKER_URL}/api/places/details?place_id=${placeId}`
       );
@@ -244,8 +291,15 @@
           lng: detailsData.result.geometry.location.lng
         };
         
-        // Sync to global state
+        // Also update userLocation for map centering
+        userLocation = {
+          lat: searchLocationCoords.lat,
+          lng: searchLocationCoords.lng,
+          name: locationText
+        };
+        
         window.filterState.searchLocationCoords = searchLocationCoords;
+        window.filterState.userLocation = userLocation;
         
         console.log('✅ Search location coords:', searchLocationCoords);
       } else {
@@ -257,75 +311,21 @@
   }
   
   function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 3959; // Earth radius in miles
+    const R = 3959;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
               Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
               Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distance in miles
+    return R * c;
   }
   
   // ============================================
   // FILTER LOGIC
   // ============================================
   
-  function getFilteredProperties() {
-    const priceMin = parseInt(document.getElementById('price-min-slider').value);
-    const priceMax = parseInt(document.getElementById('price-max-slider').value);
-    
-    const selectedTypes = Array.from(document.querySelectorAll('.property-type-pill.active'))
-      .map(pill => pill.dataset.type);
-    
-    const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
-    
-    const RADIUS_MILES = 30;
-    
-    return allProperties.filter(function(property) {
-      // Location filtering - if we have location but didn't check availability (location-only search)
-      if (searchLocationCoords && !didCheckAvailability && property.latitude && property.longitude) {
-        const distance = calculateDistance(
-          searchLocationCoords.lat,
-          searchLocationCoords.lng,
-          property.latitude,
-          property.longitude
-        );
-        if (distance > RADIUS_MILES) {
-          return false;
-        }
-      }
-      
-      // Availability check - only apply if we checked dates
-      if (didCheckAvailability) {
-        if (!availablePropertyIds.includes(parseInt(property.listingId))) {
-          return false;
-        }
-      }
-      
-      if (property.priceMin < priceMin || property.priceMax > priceMax) {
-        return false;
-      }
-      
-      if (selectedTypes.length > 0 && !selectedTypes.includes(property.propertyType)) {
-        return false;
-      }
-      
-      if (petsRequired && !property.petsAllowed) {
-        return false;
-      }
-      
-      // Room filters
-      if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
-      if (bedsFilter > 0 && property.beds < bedsFilter) return false;
-      if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
-      
-      return true;
-    });
-  }
-  
   function applyFilters() {
-    // Map-driven approach: just update the map view
     if (window.updateCardsFromMap) {
       window.updateCardsFromMap();
     }
@@ -349,7 +349,6 @@
     
     document.getElementById('pets-toggle').classList.remove('active');
     
-    // Reset room filters
     bedroomsFilter = 0;
     bedsFilter = 0;
     bathroomsFilter = 0;
@@ -369,16 +368,6 @@
     if (bedroomsMinus) bedroomsMinus.classList.add('disabled-state');
     if (bedsMinus) bedsMinus.classList.add('disabled-state');
     if (bathroomsMinus) bathroomsMinus.classList.add('disabled-state');
-    
-    updateResultsCount();
-  }
-  
-  function updateResultsCount() {
-    const count = getFilteredProperties().length;
-    const el = document.getElementById('results-count'); if (el) el.textContent = 
-      count === allProperties.length ? 
-      'Showing all properties' : 
-      `Showing ${count} of ${allProperties.length} properties`;
   }
   
   // ============================================
@@ -425,8 +414,6 @@
       
       track.style.left = percentMin + '%';
       track.style.width = (percentMax - percentMin) + '%';
-      
-      updateResultsCount();
     }
     
     minSlider.addEventListener('input', updateSlider);
@@ -452,7 +439,6 @@
       
       pill.addEventListener('click', function() {
         this.classList.toggle('active');
-        updateResultsCount();
       });
       
       typesContainer.appendChild(pill);
@@ -460,7 +446,7 @@
   }
   
   // ============================================
-  // ROOM SELECTORS (Bedrooms/Beds/Bathrooms)
+  // ROOM SELECTORS
   // ============================================
   
   function setupRoomSelectors() {
@@ -470,7 +456,6 @@
     const bedroomsPlus = document.getElementById('bedrooms-plus');
     
     if (bedroomsMinus && bedroomsPlus && bedroomsCount) {
-      // Set initial state
       bedroomsMinus.classList.add('disabled-state');
       
       bedroomsMinus.addEventListener('click', function(e) {
@@ -478,8 +463,6 @@
         if (bedroomsFilter > 0) {
           bedroomsFilter--;
           bedroomsCount.textContent = bedroomsFilter === 0 ? 'Any' : bedroomsFilter;
-          
-          // Toggle minus button opacity
           if (bedroomsFilter === 0) {
             this.classList.add('disabled-state');
           }
@@ -502,7 +485,6 @@
     const bedsPlus = document.getElementById('beds-plus');
     
     if (bedsMinus && bedsPlus && bedsCount) {
-      // Set initial state
       bedsMinus.classList.add('disabled-state');
       
       bedsMinus.addEventListener('click', function(e) {
@@ -510,8 +492,6 @@
         if (bedsFilter > 0) {
           bedsFilter--;
           bedsCount.textContent = bedsFilter === 0 ? 'Any' : bedsFilter;
-          
-          // Toggle minus button opacity
           if (bedsFilter === 0) {
             this.classList.add('disabled-state');
           }
@@ -534,7 +514,6 @@
     const bathroomsPlus = document.getElementById('bathrooms-plus');
     
     if (bathroomsMinus && bathroomsPlus && bathroomsCount) {
-      // Set initial state
       bathroomsMinus.classList.add('disabled-state');
       
       bathroomsMinus.addEventListener('click', function(e) {
@@ -542,8 +521,6 @@
         if (bathroomsFilter > 0) {
           bathroomsFilter--;
           bathroomsCount.textContent = bathroomsFilter === 0 ? 'Any' : bathroomsFilter;
-          
-          // Toggle minus button opacity
           if (bathroomsFilter === 0) {
             this.classList.add('disabled-state');
           }
@@ -566,7 +543,6 @@
   // ============================================
   
   function setupEventListeners() {
-    // Filter button toggle
     document.getElementById('filter-btn').addEventListener('click', function(e) {
       e.stopPropagation();
       document.getElementById('filter-dropdown').classList.toggle('active');
@@ -583,7 +559,6 @@
     
     document.getElementById('pets-toggle').addEventListener('click', function() {
       this.classList.toggle('active');
-      updateResultsCount();
     });
     
     document.getElementById('clear-filters').addEventListener('click', clearFilters);
@@ -591,11 +566,9 @@
     
     document.getElementById('search-btn').addEventListener('click', handleSearch);
     
-    // Handle browser back/forward buttons
     window.addEventListener('popstate', function(event) {
       console.log('⬅️ Browser back/forward button clicked');
       
-      // Parse URL params
       const urlParams = new URLSearchParams(window.location.search);
       const location = urlParams.get('location');
       const checkin = urlParams.get('checkin');
@@ -603,10 +576,8 @@
       const guests = urlParams.get('guests');
       
       if (location) {
-        // User went back/forward to a search - perform it
         console.log('🔄 Restoring search state:', { location, checkin, checkout, guests });
         
-        // Update form fields
         document.getElementById('location-input').value = location;
         selectedLocation = { description: location };
         
@@ -625,10 +596,8 @@
           updateGuestDisplay();
         }
         
-        // Perform the search
         performClientSideSearch(location, checkin, checkout, guests);
       } else {
-        // User went back to no-search state - reload to show all
         window.location.reload();
       }
     });
@@ -856,13 +825,11 @@
   async function handleSearch() {
     const location = document.getElementById('location-input').value;
     
-    // Validate location is required
     if (!location || location.trim() === '') {
       showError('Please enter a destination');
       return;
     }
     
-    // Fix date conversion - use local timezone, not UTC
     let checkin = '';
     let checkout = '';
     
@@ -888,14 +855,11 @@
     if (checkout) params.append('checkout', checkout);
     params.append('guests', guests);
     
-    // ✅ NO RELOAD! Update URL and trigger search client-side
     const newUrl = `/listings?${params.toString()}`;
     console.log('🔍 Performing client-side search:', newUrl);
     
-    // Update browser URL without reload (back button works!)
     window.history.pushState({ search: true }, '', newUrl);
     
-    // Trigger the search client-side
     await performClientSideSearch(location, checkin, checkout, guests);
   }
   
@@ -903,46 +867,44 @@
     try {
       console.log('🚀 Client-side search started:', { location, checkin, checkout, guests });
       
-      // Update selectedLocation
       selectedLocation = { description: location };
       
-      // Get coordinates for the new location
       console.log('📍 Getting coordinates for new location...');
       await getLocationCoordinates(location);
       
-      // If dates provided, check availability
-if (checkin && checkout && checkin !== '' && checkout !== '') {
-  console.log('📅 Checking availability for dates...');
-  await checkAvailability(checkin, checkout, guests || '2');
-} else {
-  // Clear availability filter if no dates
-  console.log('🧹 Clearing availability filter (location-only search)');
-  didCheckAvailability = false;
-  availablePropertyIds = [];
-  window.filterState.didCheckAvailability = false;
-  window.filterState.availablePropertyIds = [];
-}
+      // Fetch properties near the new location
+      console.log('🔍 Fetching nearby properties for new location...');
+      await fetchNearbyProperties(userLocation.lat, userLocation.lng, 50);
       
-      // Re-center map and filter
+      // Update price sliders with new data
+      setupPriceSliders();
+      buildPropertyTypeFilter();
+      
+      if (checkin && checkout && checkin !== '' && checkout !== '') {
+        console.log('📅 Checking availability for dates...');
+        await checkAvailability(checkin, checkout, guests || '2');
+      } else {
+        console.log('🧹 Clearing availability filter (location-only search)');
+        didCheckAvailability = false;
+        availablePropertyIds = [];
+        window.filterState.didCheckAvailability = false;
+        window.filterState.availablePropertyIds = [];
+      }
+      
       if (searchLocationCoords && searchLocationCoords.lat && searchLocationCoords.lng) {
         console.log('🗺️ Re-centering map on new location:', searchLocationCoords);
         
         const map = window.mapInstance;
         if (map) {
-          // Detach listeners temporarily to avoid double-triggering
           map.off('moveend', window.updateCardsFromMap);
           map.off('zoomend', window.updateCardsFromMap);
           
-          // Center on new location
           map.setView([searchLocationCoords.lat, searchLocationCoords.lng], 10);
           
-          // Wait for map to settle
           setTimeout(() => {
-            // Re-attach listeners
             map.on('moveend', window.updateCardsFromMap);
             map.on('zoomend', window.updateCardsFromMap);
             
-            // Trigger filtering
             console.log('⚡ Triggering filtering for new search');
             window.updateCardsFromMap();
           }, 800);
@@ -958,7 +920,6 @@ if (checkin && checkout && checkin !== '' && checkout !== '') {
   }
   
   function showError(message) {
-    // Create or get error element
     let errorEl = document.getElementById('search-error');
     if (!errorEl) {
       errorEl = document.createElement('div');
@@ -1018,15 +979,16 @@ if (checkin && checkout && checkin !== '' && checkout !== '') {
     init();
   }
 })();
-// MAP-DRIVEN FILTERING (Airbnb style)
-// Add this to your existing desktop-search-v3.js
 
-// Wait for map to be ready
+// ============================================
+// MAP-DRIVEN FILTERING
+// ============================================
+
 function waitForMap() {
   console.log('⏳ Waiting for map to load...');
   return new Promise((resolve, reject) => {
     let attempts = 0;
-    const maxAttempts = 100; // 10 seconds timeout
+    const maxAttempts = 100;
     
     const checkMap = setInterval(() => {
       attempts++;
@@ -1037,8 +999,6 @@ function waitForMap() {
         resolve();
       } else if (attempts >= maxAttempts) {
         console.error('❌ Map not found after 10 seconds');
-        console.log('window.mapInstance:', window.mapInstance);
-        console.log('window.mapMarkers:', window.mapMarkers);
         clearInterval(checkMap);
         reject(new Error('Map timeout'));
       }
@@ -1046,7 +1006,7 @@ function waitForMap() {
   });
 }
 
-async function initMapDrivenFiltering(searchCoords) {
+async function initMapDrivenFiltering(userLocation) {
   try {
     await waitForMap();
     
@@ -1055,267 +1015,227 @@ async function initMapDrivenFiltering(searchCoords) {
     
     console.log('🗺️ Map-driven filtering initialized with', allCards.length, 'cards');
     
-    // DON'T restrict map bounds - user should be able to zoom out freely
-    
-  // Function to update cards based on map bounds
-  function updateCardsFromMapBounds() {
-    console.log('🔄 updateCardsFromMapBounds called');
-    
-    // Show brief loading state (fade to 0.4 opacity)
-    const allCards = document.querySelectorAll('[data-listings-id]');
-    
-    allCards.forEach(card => {
-      card.style.opacity = '0.4';
-      card.style.transition = 'opacity 0.15s ease-out';
-    });
-    
-    // Use setTimeout to show loading state briefly
-    setTimeout(() => {
-      performFiltering();
-    }, 100);
-  }
-  
-  function performFiltering() {
-    const map = window.mapInstance;
-    const allCards = document.querySelectorAll('[data-listings-id]');
-    
-    const bounds = map.getBounds();
-    const center = map.getCenter();
-    const zoom = map.getZoom();
-    
-    console.log('📍 Map state:', {
-      center: `lat=${center.lat.toFixed(4)}, lng=${center.lng.toFixed(4)}`,
-      zoom: zoom,
-      bounds: `SW(${bounds.getSouthWest().lat.toFixed(2)},${bounds.getSouthWest().lng.toFixed(2)}) to NE(${bounds.getNorthEast().lat.toFixed(2)},${bounds.getNorthEast().lng.toFixed(2)})`
-    });
-    
-    let visibleCount = 0;
-    
-    const filterState = window.filterState || {};
-    const availableIds = filterState.availablePropertyIds || [];
-    const didCheck = filterState.didCheckAvailability || false;
-    
-    console.log('Filter state:', { didCheck, availableIdsCount: availableIds.length });
-    
-    allCards.forEach(card => {
-      const lat = parseFloat(card.getAttribute('data-lat'));
-      const lng = parseFloat(card.getAttribute('data-lng'));
-      const listingId = card.getAttribute('data-listings-id');
+    function updateCardsFromMapBounds() {
+      console.log('🔄 updateCardsFromMapBounds called');
       
-      if (isNaN(lat) || isNaN(lng)) {
-        card.style.display = 'none';
-        return;
-      }
+      const allCards = document.querySelectorAll('[data-listings-id]');
       
-      // Check if property is within map bounds
-      const isInBounds = bounds.contains([lat, lng]);
-      
-      // Apply availability filter if dates were searched - FIXED LOGIC
-      let isAvailable = true;
-      if (didCheck) {
-        isAvailable = availableIds.includes(parseInt(listingId));
-      }
-      
-      // Apply other filters (price, type, amenities)
-      const passesFilters = passesOtherFilters(card);
-      
-      // Show card if in bounds AND available AND passes filters
-      if (isInBounds && isAvailable && passesFilters) {
-        card.style.display = '';
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(10px)';
-        card.style.transition = 'opacity 0.4s ease-out, transform 0.4s ease-out';
-        visibleCount++;
-      } else {
-        // Hide immediately, no animation for out-of-bounds cards
-        card.style.display = 'none';
-        card.style.opacity = '0';
-        card.style.transform = 'translateY(10px)';
-      }
-    });
-    
-    console.log(`🗺️ Filtering complete: ${visibleCount} of ${allCards.length} properties in bounds`);
-    
-    // If no properties visible, reset ALL cards to full opacity immediately (don't leave them faded)
-    if (visibleCount === 0) {
       allCards.forEach(card => {
-        card.style.opacity = '1';
-        card.style.display = 'none';
+        card.style.opacity = '0.4';
+        card.style.transition = 'opacity 0.15s ease-out';
       });
-    }
-    
-    // Stagger animation ONLY for visible cards
-    const visibleCards = Array.from(allCards).filter(card => card.style.display !== 'none');
-    
-    console.log(`🎬 Animating ${visibleCards.length} visible cards`);
-    
-    visibleCards.forEach((card, index) => {
+      
       setTimeout(() => {
-        card.style.opacity = '1';
-        card.style.transform = 'translateY(0)';
-      }, index * 30); // 30ms stagger
-    });
-    
-    updateResultsCount(visibleCount);
-    
-    // If no properties found, zoom out until we find some
-    if (visibleCount === 0 && allCards.length > 0) {
-      console.log('🔍 ZERO properties visible - zooming out...');
-      
-      const currentZoom = map.getZoom();
-      if (currentZoom > 3) {
-        console.log(`📉 Zooming out from ${currentZoom} to ${currentZoom - 1}`);
-        map.setZoom(currentZoom - 1);
-        // The zoomend event will trigger filtering again automatically
-      } else {
-        console.log('⚠️ Already at minimum zoom (3), cannot zoom out further');
-      }
-    } else {
-      console.log(`✅ Showing ${visibleCount} properties, no zoom needed`);
+        performFiltering();
+      }, 100);
     }
     
-    // Show empty state if still no results
-    showEmptyState(visibleCount === 0);
-    
-    // Update markers on map
-    updateMapMarkersVisibility();
-  }
-  
-  // Function to check other filters (price, type, amenities)
-  function passesOtherFilters(card) {
-    const listingId = parseInt(card.getAttribute('data-listings-id'));
-    const allProps = window.filterState.allProperties || [];
-    const property = allProps.find(p => parseInt(p.listingId) === listingId);
-    
-    if (!property) return true;
-    
-    // Price filter
-    const priceMin = parseInt(document.getElementById('price-min-slider').value);
-    const priceMax = parseInt(document.getElementById('price-max-slider').value);
-    if (property.priceMin < priceMin || property.priceMax > priceMax) {
-      return false;
-    }
-    
-    // Property type filter
-    const selectedTypes = Array.from(document.querySelectorAll('.property-type-pill.active'))
-      .map(pill => pill.dataset.type);
-    if (selectedTypes.length > 0 && !selectedTypes.includes(property.propertyType)) {
-      return false;
-    }
-    
-    // Amenities filters
-    const petsRequired = document.getElementById('pets-toggle') ? document.getElementById('pets-toggle').classList.contains('active') : false;
-    
-    if (petsRequired && !property.petsAllowed) return false;
-    
-    // Room filters - access from parent scope
-    const bedroomsFilter = window.bedroomsFilter || 0;
-    const bedsFilter = window.bedsFilter || 0;
-    const bathroomsFilter = window.bathroomsFilter || 0;
-    
-    if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
-    if (bedsFilter > 0 && property.beds < bedsFilter) return false;
-    if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
-    
-    return true;
-  }
-  
-  // Update map markers visibility based on filters
-  function updateMapMarkersVisibility() {
-    const filterState = window.filterState || {};
-    const availableIds = filterState.availablePropertyIds || [];
-    const didCheck = filterState.didCheckAvailability || false;
-    const allProps = filterState.allProperties || [];
-    
-    window.mapMarkers.forEach(marker => {
-      const markerListingId = marker.options.listingId;
+    function performFiltering() {
+      const map = window.mapInstance;
+      const allCards = document.querySelectorAll('[data-listings-id]');
       
-      // Check availability - FIXED LOGIC
-      let isAvailable = true;
-      if (didCheck) {
-        isAvailable = availableIds.includes(parseInt(markerListingId));
-      }
+      const bounds = map.getBounds();
+      const center = map.getCenter();
+      const zoom = map.getZoom();
       
-      // Check other filters
-      const property = allProps.find(p => parseInt(p.listingId) === parseInt(markerListingId));
-      const passesFilters = property ? passesOtherFilters(document.querySelector(`[data-listings-id="${markerListingId}"]`)) : true;
-      
-      // Show/hide marker
-      if (isAvailable && passesFilters) {
-        if (!map.hasLayer(marker)) {
-          marker.addTo(map);
-        }
-      } else {
-        if (map.hasLayer(marker)) {
-          map.removeLayer(marker);
-        }
-      }
-    });
-  }
-  
-  // Expose function globally for filter updates
-  window.updateCardsFromMap = updateCardsFromMapBounds;
-  
-  // Center map on search location if provided
-  if (searchCoords && searchCoords.lat && searchCoords.lng) {
-    console.log('🗺️ Centering map on search location:', searchCoords);
-    
-    // Attach listeners FIRST
-    map.on('moveend', updateCardsFromMapBounds);
-    map.on('zoomend', updateCardsFromMapBounds);
-    
-    // Center the map
-    map.setView([searchCoords.lat, searchCoords.lng], 10);
-    
-    // Wait for map to settle, then trigger filtering
-    setTimeout(() => {
-      const finalCenter = map.getCenter();
-      console.log('✅ Map should be centered. Position:', {
-        lat: finalCenter.lat.toFixed(4),
-        lng: finalCenter.lng.toFixed(4),
-        zoom: map.getZoom()
+      console.log('📍 Map state:', {
+        center: `lat=${center.lat.toFixed(4)}, lng=${center.lng.toFixed(4)}`,
+        zoom: zoom,
+        bounds: `SW(${bounds.getSouthWest().lat.toFixed(2)},${bounds.getSouthWest().lng.toFixed(2)}) to NE(${bounds.getNorthEast().lat.toFixed(2)},${bounds.getNorthEast().lng.toFixed(2)})`
       });
       
-      console.log('⚡ Triggering initial filtering after map center');
+      let visibleCount = 0;
+      
+      const filterState = window.filterState || {};
+      const visibleIds = filterState.visiblePropertyIds || [];
+      const availableIds = filterState.availablePropertyIds || [];
+      const didCheck = filterState.didCheckAvailability || false;
+      
+      console.log('Filter state:', { didCheck, visibleIdsCount: visibleIds.length, availableIdsCount: availableIds.length });
+      
+      allCards.forEach(card => {
+        const lat = parseFloat(card.getAttribute('data-lat'));
+        const lng = parseFloat(card.getAttribute('data-lng'));
+        const listingId = card.getAttribute('data-listings-id');
+        
+        if (isNaN(lat) || isNaN(lng)) {
+          card.style.display = 'none';
+          return;
+        }
+        
+        // Check if property is in our fetched visible set
+        const isInVisibleSet = visibleIds.includes(parseInt(listingId));
+        
+        if (!isInVisibleSet) {
+          card.style.display = 'none';
+          return;
+        }
+        
+        // Check if property is within map bounds
+        const isInBounds = bounds.contains([lat, lng]);
+        
+        // Apply availability filter if dates were searched
+        let isAvailable = true;
+        if (didCheck) {
+          isAvailable = availableIds.includes(parseInt(listingId));
+        }
+        
+        // Apply other filters
+        const passesFilters = passesOtherFilters(card);
+        
+        if (isInBounds && isAvailable && passesFilters) {
+          card.style.display = '';
+          card.style.opacity = '0';
+          card.style.transform = 'translateY(10px)';
+          card.style.transition = 'opacity 0.4s ease-out, transform 0.4s ease-out';
+          visibleCount++;
+        } else {
+          card.style.display = 'none';
+          card.style.opacity = '0';
+          card.style.transform = 'translateY(10px)';
+        }
+      });
+      
+      console.log(`🗺️ Filtering complete: ${visibleCount} of ${allCards.length} properties in bounds`);
+      
+      if (visibleCount === 0) {
+        allCards.forEach(card => {
+          card.style.opacity = '1';
+          card.style.display = 'none';
+        });
+      }
+      
+      const visibleCards = Array.from(allCards).filter(card => card.style.display !== 'none');
+      
+      console.log(`🎬 Animating ${visibleCards.length} visible cards`);
+      
+      visibleCards.forEach((card, index) => {
+        setTimeout(() => {
+          card.style.opacity = '1';
+          card.style.transform = 'translateY(0)';
+        }, index * 30);
+      });
+      
+      showEmptyState(visibleCount === 0);
+      updateMapMarkersVisibility();
+    }
+    
+    function passesOtherFilters(card) {
+      const listingId = parseInt(card.getAttribute('data-listings-id'));
+      const allProps = window.filterState.allProperties || [];
+      const property = allProps.find(p => parseInt(p.listingId) === listingId);
+      
+      if (!property) return true;
+      
+      const priceMin = parseInt(document.getElementById('price-min-slider').value);
+      const priceMax = parseInt(document.getElementById('price-max-slider').value);
+      if (property.priceMin < priceMin || property.priceMax > priceMax) {
+        return false;
+      }
+      
+      const selectedTypes = Array.from(document.querySelectorAll('.property-type-pill.active'))
+        .map(pill => pill.dataset.type);
+      if (selectedTypes.length > 0 && !selectedTypes.includes(property.propertyType)) {
+        return false;
+      }
+      
+      const petsRequired = document.getElementById('pets-toggle') ? document.getElementById('pets-toggle').classList.contains('active') : false;
+      
+      if (petsRequired && !property.petsAllowed) return false;
+      
+      const bedroomsFilter = window.bedroomsFilter || 0;
+      const bedsFilter = window.bedsFilter || 0;
+      const bathroomsFilter = window.bathroomsFilter || 0;
+      
+      if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
+      if (bedsFilter > 0 && property.beds < bedsFilter) return false;
+      if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
+      
+      return true;
+    }
+    
+    function updateMapMarkersVisibility() {
+      const filterState = window.filterState || {};
+      const visibleIds = filterState.visiblePropertyIds || [];
+      const availableIds = filterState.availablePropertyIds || [];
+      const didCheck = filterState.didCheckAvailability || false;
+      const allProps = filterState.allProperties || [];
+      
+      window.mapMarkers.forEach(marker => {
+        const markerListingId = marker.options.listingId;
+        
+        // Check if in visible set
+        const isInVisibleSet = visibleIds.includes(parseInt(markerListingId));
+        
+        if (!isInVisibleSet) {
+          if (map.hasLayer(marker)) {
+            map.removeLayer(marker);
+          }
+          return;
+        }
+        
+        // Check availability
+        let isAvailable = true;
+        if (didCheck) {
+          isAvailable = availableIds.includes(parseInt(markerListingId));
+        }
+        
+        // Check other filters
+        const property = allProps.find(p => parseInt(p.listingId) === parseInt(markerListingId));
+        const passesFilters = property ? passesOtherFilters(document.querySelector(`[data-listings-id="${markerListingId}"]`)) : true;
+        
+        if (isAvailable && passesFilters) {
+          if (!map.hasLayer(marker)) {
+            marker.addTo(map);
+          }
+        } else {
+          if (map.hasLayer(marker)) {
+            map.removeLayer(marker);
+          }
+        }
+      });
+    }
+    
+    window.updateCardsFromMap = updateCardsFromMapBounds;
+    
+    if (userLocation && userLocation.lat && userLocation.lng) {
+      console.log('🗺️ Centering map on user location:', userLocation);
+      
+      map.on('moveend', updateCardsFromMapBounds);
+      map.on('zoomend', updateCardsFromMapBounds);
+      
+      map.setView([userLocation.lat, userLocation.lng], 10);
+      
+      setTimeout(() => {
+        const finalCenter = map.getCenter();
+        console.log('✅ Map centered. Position:', {
+          lat: finalCenter.lat.toFixed(4),
+          lng: finalCenter.lng.toFixed(4),
+          zoom: map.getZoom()
+        });
+        
+        console.log('⚡ Triggering initial filtering after map center');
+        updateCardsFromMapBounds();
+      }, 800);
+      
+    } else {
+      console.log('ℹ️ No user location - attaching listeners and filtering immediately');
+      
+      map.on('moveend', updateCardsFromMapBounds);
+      map.on('zoomend', updateCardsFromMapBounds);
+      
+      console.log('⚡ Triggering immediate filtering');
       updateCardsFromMapBounds();
-    }, 800);
+    }
     
-  } else {
-    console.log('ℹ️ No search coordinates - attaching listeners and filtering immediately');
-    
-    // Attach listeners
-    map.on('moveend', updateCardsFromMapBounds);
-    map.on('zoomend', updateCardsFromMapBounds);
-    
-    // Trigger initial filter RIGHT NOW - don't wait
-    console.log('⚡ Triggering immediate filtering');
-    updateCardsFromMapBounds();
-  }
-  
   } catch (error) {
     console.error('Map initialization failed:', error);
-    // Fallback: show all cards if map doesn't load
     document.querySelectorAll('[data-listings-id]').forEach(card => {
       card.style.display = '';
     });
   }
 }
 
-// Function to center map on search location
-function centerMapOnLocation(lat, lng, zoom = 12) {
-  if (window.mapInstance) {
-    window.mapInstance.setView([lat, lng], zoom);
-    console.log(`🗺️ Map centered on: ${lat}, ${lng}`);
-  }
-}
-
-// Update results count display (removed - not needed)
-function updateResultsCount(count) {
-  // Removed per user request
-}
-
-
-// Show/hide loading state on property cards
 function showCardLoadingState(show) {
   const allCards = document.querySelectorAll('[data-listings-id]');
   console.log(`${show ? '🔄 Showing' : '✅ Hiding'} loading spinners on ${allCards.length} cards`);
@@ -1325,7 +1245,6 @@ function showCardLoadingState(show) {
     
     if (show) {
       if (!spinner) {
-        // Create spinner overlay
         spinner = document.createElement('div');
         spinner.className = 'card-loading-spinner';
         spinner.style.cssText = `
@@ -1359,7 +1278,6 @@ function showCardLoadingState(show) {
           </style>
         `;
         
-        // Make sure card has position relative
         const cardPosition = window.getComputedStyle(card).position;
         if (cardPosition === 'static') {
           card.style.position = 'relative';
@@ -1376,77 +1294,11 @@ function showCardLoadingState(show) {
   });
 }
 
-// Find and zoom to show nearest properties
-function findAndShowNearestProperties(map, allCards) {
-  const mapCenter = map.getCenter();
-  const filterState = window.filterState || {};
-  const availableIds = filterState.availablePropertyIds || [];
-  const didCheck = filterState.didCheckAvailability || false;
-  
-  // Get all valid property locations with distances
-  const propertiesWithDistance = [];
-  
-  allCards.forEach(card => {
-    const lat = parseFloat(card.getAttribute('data-lat'));
-    const lng = parseFloat(card.getAttribute('data-lng'));
-    const listingId = card.getAttribute('data-listings-id');
-    
-    if (isNaN(lat) || isNaN(lng)) return;
-    
-    // Check if property is available (if dates were searched)
-    if (didCheck && availableIds.length > 0) {
-      if (!availableIds.includes(parseInt(listingId))) return;
-    }
-    
-    // Calculate distance from map center
-    const distance = map.distance([lat, lng], mapCenter);
-    
-    propertiesWithDistance.push({
-      lat,
-      lng,
-      distance,
-      listingId
-    });
-  });
-  
-  if (propertiesWithDistance.length === 0) {
-    console.log('❌ No properties found anywhere');
-    return;
-  }
-  
-  // Sort by distance and get nearest properties
-  propertiesWithDistance.sort((a, b) => a.distance - b.distance);
-  
-  // Get nearest 5-10 properties
-  const nearestProperties = propertiesWithDistance.slice(0, Math.min(10, propertiesWithDistance.length));
-  
-  console.log(`📍 Found ${nearestProperties.length} nearest properties`);
-  
-  // Create bounds that include all nearest properties
-  const bounds = L.latLngBounds(nearestProperties.map(p => [p.lat, p.lng]));
-  
-  // Fit map to show these properties with some padding
-  map.fitBounds(bounds, { 
-    padding: [50, 50],
-    maxZoom: 11 // Don't zoom in too much
-  });
-  
-  // Manually trigger update after zoom completes
-  setTimeout(() => {
-    if (window.updateCardsFromMap) {
-      console.log('🔄 Re-filtering after smart zoom...');
-      window.updateCardsFromMap();
-    }
-  }, 500);
-}
-
-// Show/hide empty state message
 function showEmptyState(show) {
   let emptyState = document.getElementById('empty-state-message');
   
   if (show) {
     if (!emptyState) {
-      // Create empty state element
       emptyState = document.createElement('div');
       emptyState.id = 'empty-state-message';
       emptyState.style.cssText = `
@@ -1475,7 +1327,6 @@ function showEmptyState(show) {
         </ul>
       `;
       
-      // Insert after property cards container
       const cardsContainer = document.querySelector('.collection-list, [data-listings-id]')?.parentElement;
       if (cardsContainer) {
         cardsContainer.appendChild(emptyState);
