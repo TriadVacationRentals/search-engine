@@ -123,93 +123,37 @@
   
   async function checkAvailability(checkin, checkout, guests) {
     try {
-      document.getElementById('results-count').textContent = 'Checking availability for visible properties...';
+      const resultsCountEl = document.getElementById('results-count');
+      if (resultsCountEl) {
+        resultsCountEl.textContent = 'Checking availability...';
+      }
       
       console.log('Checking availability:', { checkin, checkout, guests });
       
-      // Calculate nights
-      const checkInDate = new Date(checkin);
-      const checkOutDate = new Date(checkout);
-      const nights = Math.round((checkOutDate - checkInDate) / (1000 * 60 * 60 * 24));
+      // Call Worker to get available property IDs
+      const response = await fetch(
+        `${WORKER_URL}/api/search?checkin=${checkin}&checkout=${checkout}&guests=${guests}`
+      );
       
-      console.log(`Checking ${nights} nights from ${checkin} to ${checkout}`);
-      
-      // Get all visible property cards (first 15 on page)
-      const visibleCards = Array.from(document.querySelectorAll('[data-listings-id]')).slice(0, 15);
-      console.log(`Found ${visibleCards.length} visible cards to check`);
-      
-      availablePropertyIds = [];
-      let checkedCount = 0;
-      
-      // Check each visible property
-      for (const card of visibleCards) {
-        const listingId = card.getAttribute('data-listings-id');
-        
-        try {
-          // Fetch calendar for this property
-          const calendarResponse = await fetch(
-            `${WORKER_URL}/api/listings/${listingId}/calendar?startDate=${checkin}&endDate=${checkout}`
-          );
-          
-          if (!calendarResponse.ok) {
-            console.warn(`Failed to fetch calendar for ${listingId}`);
-            continue;
-          }
-          
-          const calendarData = await calendarResponse.json();
-          
-          if (!calendarData.result || calendarData.result.length === 0) {
-            console.warn(`No calendar data for ${listingId}`);
-            continue;
-          }
-          
-          // VALIDATION 1: Check minimum stay requirement
-          const checkInDayData = calendarData.result[0];
-          const minimumStay = checkInDayData.minimumStay || 1;
-          
-          if (nights < minimumStay) {
-            console.log(`❌ ${listingId}: Needs ${minimumStay} nights, only ${nights} requested`);
-            continue;
-          }
-          
-          // VALIDATION 2: Check if ALL nights are available
-          let allNightsAvailable = true;
-          for (const day of calendarData.result) {
-            const dayDate = new Date(day.date);
-            // Check nights between check-in and check-out (not checkout day itself)
-            if (dayDate >= checkInDate && dayDate < checkOutDate) {
-              if (day.isAvailable !== 1) {
-                allNightsAvailable = false;
-                console.log(`❌ ${listingId}: Night ${day.date} not available`);
-                break;
-              }
-            }
-          }
-          
-          if (allNightsAvailable) {
-            availablePropertyIds.push(parseInt(listingId));
-            console.log(`✅ ${listingId}: Available!`);
-          }
-          
-        } catch (error) {
-          console.error(`Error checking ${listingId}:`, error);
-        }
-        
-        checkedCount++;
-        document.getElementById('results-count').textContent = 
-          `Checked ${checkedCount} of ${visibleCards.length} properties...`;
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}`);
       }
       
-      console.log(`✅ Found ${availablePropertyIds.length} available properties:`, availablePropertyIds);
-      document.getElementById('results-count').textContent = 
-        `Found ${availablePropertyIds.length} available properties`;
+      const data = await response.json();
       
-      didCheckAvailability = true; // Mark that we checked dates
+      availablePropertyIds = data.available || [];
+      didCheckAvailability = true;
+      
+      console.log(`✅ Worker returned ${availablePropertyIds.length} available properties:`, availablePropertyIds);
+      
+      const el = document.getElementById('results-count'); if (el) el.textContent = 
+        `Found ${availablePropertyIds.length} available properties`;
       
     } catch (error) {
       console.error('❌ Availability check failed:', error);
       availablePropertyIds = [];
-      document.getElementById('results-count').textContent = 'Failed to check availability';
+      didCheckAvailability = true;
+      const el = document.getElementById('results-count'); if (el) el.textContent = 'Failed to check availability';
     }
   }
   
@@ -373,7 +317,7 @@
   
   function updateResultsCount() {
     const count = getFilteredProperties().length;
-    document.getElementById('results-count').textContent = 
+    const el = document.getElementById('results-count'); if (el) el.textContent = 
       count === allProperties.length ? 
       'Showing all properties' : 
       `Showing ${count} of ${allProperties.length} properties`;
