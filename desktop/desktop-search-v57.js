@@ -927,8 +927,8 @@
         const map = window.mapInstance;
         if (map) {
           // Detach listeners temporarily to avoid double-triggering
-          map.off('moveend', updateCardsFromMapBounds);
-          map.off('zoomend', updateCardsFromMapBounds);
+          map.off('moveend', window.updateCardsFromMap);
+          map.off('zoomend', window.updateCardsFromMap);
           
           // Center on new location
           map.setView([searchLocationCoords.lat, searchLocationCoords.lng], 10);
@@ -936,12 +936,12 @@
           // Wait for map to settle
           setTimeout(() => {
             // Re-attach listeners
-            map.on('moveend', updateCardsFromMapBounds);
-            map.on('zoomend', updateCardsFromMapBounds);
+            map.on('moveend', window.updateCardsFromMap);
+            map.on('zoomend', window.updateCardsFromMap);
             
             // Trigger filtering
             console.log('⚡ Triggering filtering for new search');
-            updateCardsFromMapBounds();
+            window.updateCardsFromMap();
           }, 800);
         }
       }
