@@ -78,39 +78,11 @@
       console.log('Fetching all properties...');
       await fetchAllProperties();
       
-      // Show loading state on all cards immediately
+      // Show loading state on all cards immediately - just opacity fade
       const allCards = document.querySelectorAll('[data-listings-id]');
       allCards.forEach(card => {
         card.style.opacity = '0.4';
-        card.style.transition = 'opacity 0.2s ease-out, filter 0.2s ease-out';
-        card.style.position = 'relative';
-        card.style.filter = 'grayscale(100%)'; // Black and white
-        
-        // Add bigger spinner
-        const spinner = document.createElement('div');
-        spinner.className = 'initial-loading-spinner';
-        spinner.innerHTML = `
-          <style>
-            @keyframes initialSpin {
-              0% { transform: translate(-50%, -50%) rotate(0deg); }
-              100% { transform: translate(-50%, -50%) rotate(360deg); }
-            }
-          </style>
-        `;
-        spinner.style.cssText = `
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          width: 48px;
-          height: 48px;
-          border: 4px solid rgba(0,0,0,0.1);
-          border-top-color: #16A8EE;
-          border-radius: 50%;
-          animation: initialSpin 0.8s linear infinite;
-          z-index: 100;
-        `;
-        card.appendChild(spinner);
+        card.style.transition = 'opacity 0.2s ease-out';
       });
       
       // Get coordinates for radius filtering and map centering
@@ -981,17 +953,13 @@ async function initMapDrivenFiltering(searchCoords) {
   function updateCardsFromMapBounds() {
     console.log('🔄 updateCardsFromMapBounds called');
     
-    // Only show loading state if cards don't already have initial spinners
+    // Show brief loading state (fade to 0.4 opacity)
     const allCards = document.querySelectorAll('[data-listings-id]');
-    const hasInitialSpinners = document.querySelector('.initial-loading-spinner');
     
-    if (!hasInitialSpinners) {
-      // Show brief loading state (only if not initial load)
-      allCards.forEach(card => {
-        card.style.opacity = '0.4';
-        card.style.transition = 'opacity 0.15s ease-out';
-      });
-    }
+    allCards.forEach(card => {
+      card.style.opacity = '0.4';
+      card.style.transition = 'opacity 0.15s ease-out';
+    });
     
     // Use setTimeout to show loading state briefly
     setTimeout(() => {
@@ -1002,16 +970,6 @@ async function initMapDrivenFiltering(searchCoords) {
   function performFiltering() {
     const map = window.mapInstance;
     const allCards = document.querySelectorAll('[data-listings-id]');
-    
-    // Remove initial loading spinners AND grayscale
-    allCards.forEach(card => {
-      const spinner = card.querySelector('.initial-loading-spinner');
-      if (spinner) {
-        spinner.remove();
-      }
-      // Remove grayscale filter
-      card.style.filter = 'none';
-    });
     
     const bounds = map.getBounds();
     const center = map.getCenter();
@@ -1218,13 +1176,15 @@ async function initMapDrivenFiltering(searchCoords) {
       updateCardsFromMapBounds();
     }
   } else {
-    console.log('ℹ️ No search coordinates - showing all properties in default view');
-    // No search location - attach listeners immediately
+    console.log('ℹ️ No search coordinates - attaching listeners and filtering immediately');
+    
+    // Attach listeners
     map.on('moveend', updateCardsFromMapBounds);
     map.on('zoomend', updateCardsFromMapBounds);
     
-    // Trigger initial filter
-    setTimeout(updateCardsFromMapBounds, 500);
+    // Trigger initial filter RIGHT NOW - don't wait
+    console.log('⚡ Triggering immediate filtering');
+    updateCardsFromMapBounds();
   }
   
   } catch (error) {
