@@ -262,6 +262,7 @@
       .map(pill => pill.dataset.type);
     
     const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
+    const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
     const RADIUS_MILES = 30;
     
@@ -298,10 +299,9 @@
         return false;
       }
       
-      // Room filters
-      if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
-      if (bedsFilter > 0 && property.beds < bedsFilter) return false;
-      if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
+      if (smokingRequired && !property.smokingAllowed) {
+        return false;
+      }
       
       return true;
     });
@@ -331,6 +331,7 @@
     });
     
     document.getElementById('pets-toggle').classList.remove('active');
+    document.getElementById('smoking-toggle').classList.remove('active');
     
     // Reset room filters
     bedroomsFilter = 0;
@@ -341,17 +342,9 @@
     const bedsCount = document.getElementById('beds-count');
     const bathroomsCount = document.getElementById('bathrooms-count');
     
-    const bedroomsMinus = document.getElementById('bedrooms-minus');
-    const bedsMinus = document.getElementById('beds-minus');
-    const bathroomsMinus = document.getElementById('bathrooms-minus');
-    
     if (bedroomsCount) bedroomsCount.textContent = 'Any';
     if (bedsCount) bedsCount.textContent = 'Any';
     if (bathroomsCount) bathroomsCount.textContent = 'Any';
-    
-    if (bedroomsMinus) bedroomsMinus.classList.add('disabled-state');
-    if (bedsMinus) bedsMinus.classList.add('disabled-state');
-    if (bathroomsMinus) bathroomsMinus.classList.add('disabled-state');
     
     updateResultsCount();
   }
@@ -369,53 +362,109 @@
   // ============================================
   
   function setupPriceSliders() {
-    const minSlider = document.getElementById('price-min-slider');
-    const maxSlider = document.getElementById('price-max-slider');
-    const minDisplay = document.getElementById('price-min-display');
-    const maxDisplay = document.getElementById('price-max-display');
-    const track = document.getElementById('slider-track');
+    const priceMin = actualMinPrice;
+    const priceMax = actualMaxPrice;
     
-    minSlider.min = actualMinPrice;
-    minSlider.max = actualMaxPrice;
-    minSlider.value = actualMinPrice;
+    // Generate histogram
+    const histogramBars = 30;
+    const priceRanges = [];
+    const step = (priceMax - priceMin) / histogramBars;
     
-    maxSlider.min = actualMinPrice;
-    maxSlider.max = actualMaxPrice;
-    maxSlider.value = actualMaxPrice;
-    
-    minDisplay.textContent = '$' + actualMinPrice;
-    maxDisplay.textContent = '$' + actualMaxPrice;
-    
-    function updateSlider() {
-      let minVal = parseInt(minSlider.value);
-      let maxVal = parseInt(maxSlider.value);
+    for (let i = 0; i < histogramBars; i++) {
+      const rangeStart = priceMin + (i * step);
+      const rangeEnd = rangeStart + step;
       
-      if (minVal >= maxVal) {
-        if (this === minSlider) {
-          maxSlider.value = minVal + 1;
-          maxVal = minVal + 1;
-        } else {
-          minSlider.value = maxVal - 1;
-          minVal = maxVal - 1;
-        }
-      }
+      const count = allProperties.filter(p => 
+        p.priceMin >= rangeStart && p.priceMin < rangeEnd
+      ).length;
       
-      minDisplay.textContent = '$' + minVal;
-      maxDisplay.textContent = '$' + maxVal;
-      
-      const percentMin = ((minVal - actualMinPrice) / (actualMaxPrice - actualMinPrice)) * 100;
-      const percentMax = ((maxVal - actualMinPrice) / (actualMaxPrice - actualMinPrice)) * 100;
-      
-      track.style.left = percentMin + '%';
-      track.style.width = (percentMax - percentMin) + '%';
-      
-      updateResultsCount();
+      priceRanges.push(count);
     }
     
-    minSlider.addEventListener('input', updateSlider);
-    maxSlider.addEventListener('input', updateSlider);
+    const maxCount = Math.max(...priceRanges);
     
-    updateSlider.call(minSlider);
+    // Create histogram bars
+    const histogramContainer = document.getElementById('price-histogram');
+    if (histogramContainer) {
+      histogramContainer.innerHTML = '';
+      
+      priceRanges.forEach((count, i) => {
+        const bar = document.createElement('div');
+        bar.className = 'histogram-bar';
+        bar.dataset.index = i;
+        
+        const height = maxCount > 0 ? 20 + (count / maxCount * 80) : 20;
+        bar.style.height = `${height}%`;
+        
+        histogramContainer.appendChild(bar);
+      });
+    }
+    
+    // Setup dual range slider
+    let currentMinPrice = priceMin;
+    let currentMaxPrice = priceMax;
+    
+    const minHandle = document.getElementById('price-slider-min');
+    const maxHandle = document.getElementById('price-slider-max');
+    const rangeEl = document.getElementById('price-slider-range');
+    const minLabel = document.getElementById('price-label-min');
+    const maxLabel = document.getElementById('price-label-max');
+    const track = document.querySelector('.price-slider-track');
+    
+    if (!minHandle || !maxHandle || !track) return;
+    
+    function updateSlider() {
+      const minPercent = ((currentMinPrice - priceMin) / (priceMax - priceMin)) * 100;
+      const maxPercent = ((currentMaxPrice - priceMin) / (priceMax - priceMin)) * 100;
+      
+      minHandle.style.left = `${minPercent}%`;
+      maxHandle.style.left = `${maxPercent}%`;
+      rangeEl.style.left = `${minPercent}%`;
+      rangeEl.style.width = `${maxPercent - minPercent}%`;
+      
+      minLabel.textContent = `$${Math.round(currentMinPrice)}`;
+      maxLabel.textContent = `$${Math.round(currentMaxPrice)}`;
+      
+      // Update histogram
+      document.querySelectorAll('.histogram-bar').forEach((bar, i) => {
+        const barPrice = priceMin + (i * step);
+        if (barPrice >= currentMinPrice && barPrice <= currentMaxPrice) {
+          bar.classList.add('in-range');
+        } else {
+          bar.classList.remove('in-range');
+        }
+      });
+    }
+    
+    // Drag handlers
+    let isDragging = null;
+    
+    minHandle.addEventListener('mousedown', () => isDragging = 'min');
+    maxHandle.addEventListener('mousedown', () => isDragging = 'max');
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      const rect = track.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const percent = Math.max(0, Math.min(100, (x / rect.width) * 100));
+      const price = priceMin + (percent / 100) * (priceMax - priceMin);
+      
+      if (isDragging === 'min' && price < currentMaxPrice - 10) {
+        currentMinPrice = price;
+      } else if (isDragging === 'max' && price > currentMinPrice + 10) {
+        currentMaxPrice = price;
+      }
+      
+      updateSlider();
+    });
+    
+    document.addEventListener('mouseup', () => isDragging = null);
+    
+    // Expose currentPrices globally
+    window.getCurrentPriceRange = () => ({ min: currentMinPrice, max: currentMaxPrice });
+    
+    updateSlider();
   }
   
   // ============================================
@@ -453,19 +502,11 @@
     const bedroomsPlus = document.getElementById('bedrooms-plus');
     
     if (bedroomsMinus && bedroomsPlus && bedroomsCount) {
-      // Set initial state
-      bedroomsMinus.classList.add('disabled-state');
-      
       bedroomsMinus.addEventListener('click', function(e) {
         e.stopPropagation();
         if (bedroomsFilter > 0) {
           bedroomsFilter--;
           bedroomsCount.textContent = bedroomsFilter === 0 ? 'Any' : bedroomsFilter;
-          
-          // Toggle minus button opacity
-          if (bedroomsFilter === 0) {
-            this.classList.add('disabled-state');
-          }
         }
       });
       
@@ -474,7 +515,6 @@
         if (bedroomsFilter < 10) {
           bedroomsFilter++;
           bedroomsCount.textContent = bedroomsFilter;
-          bedroomsMinus.classList.remove('disabled-state');
         }
       });
     }
@@ -485,19 +525,11 @@
     const bedsPlus = document.getElementById('beds-plus');
     
     if (bedsMinus && bedsPlus && bedsCount) {
-      // Set initial state
-      bedsMinus.classList.add('disabled-state');
-      
       bedsMinus.addEventListener('click', function(e) {
         e.stopPropagation();
         if (bedsFilter > 0) {
           bedsFilter--;
           bedsCount.textContent = bedsFilter === 0 ? 'Any' : bedsFilter;
-          
-          // Toggle minus button opacity
-          if (bedsFilter === 0) {
-            this.classList.add('disabled-state');
-          }
         }
       });
       
@@ -506,7 +538,6 @@
         if (bedsFilter < 20) {
           bedsFilter++;
           bedsCount.textContent = bedsFilter;
-          bedsMinus.classList.remove('disabled-state');
         }
       });
     }
@@ -517,19 +548,11 @@
     const bathroomsPlus = document.getElementById('bathrooms-plus');
     
     if (bathroomsMinus && bathroomsPlus && bathroomsCount) {
-      // Set initial state
-      bathroomsMinus.classList.add('disabled-state');
-      
       bathroomsMinus.addEventListener('click', function(e) {
         e.stopPropagation();
         if (bathroomsFilter > 0) {
           bathroomsFilter--;
           bathroomsCount.textContent = bathroomsFilter === 0 ? 'Any' : bathroomsFilter;
-          
-          // Toggle minus button opacity
-          if (bathroomsFilter === 0) {
-            this.classList.add('disabled-state');
-          }
         }
       });
       
@@ -538,7 +561,6 @@
         if (bathroomsFilter < 10) {
           bathroomsFilter++;
           bathroomsCount.textContent = bathroomsFilter;
-          bathroomsMinus.classList.remove('disabled-state');
         }
       });
     }
@@ -565,6 +587,11 @@
     });
     
     document.getElementById('pets-toggle').addEventListener('click', function() {
+      this.classList.toggle('active');
+      updateResultsCount();
+    });
+    
+    document.getElementById('smoking-toggle').addEventListener('click', function() {
       this.classList.toggle('active');
       updateResultsCount();
     });
@@ -1051,15 +1078,13 @@ async function initMapDrivenFiltering(searchCoords) {
     }
     
     // Amenities filters
-    const petsRequired = document.getElementById('pets-toggle') ? document.getElementById('pets-toggle').classList.contains('active') : false;
+    const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
+    const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
     if (petsRequired && !property.petsAllowed) return false;
+    if (smokingRequired && !property.smokingAllowed) return false;
     
-    // Room filters - access from parent scope
-    const bedroomsFilter = window.bedroomsFilter || 0;
-    const bedsFilter = window.bedsFilter || 0;
-    const bathroomsFilter = window.bathroomsFilter || 0;
-    
+    // Room filters
     if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
     if (bedsFilter > 0 && property.beds < bedsFilter) return false;
     if (bathroomsFilter > 0 && property.bathrooms < bathroomsFilter) return false;
