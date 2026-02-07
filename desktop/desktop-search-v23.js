@@ -343,53 +343,109 @@
   // ============================================
   
   function setupPriceSliders() {
-    const minSlider = document.getElementById('price-min-slider');
-    const maxSlider = document.getElementById('price-max-slider');
-    const minDisplay = document.getElementById('price-min-display');
-    const maxDisplay = document.getElementById('price-max-display');
-    const track = document.getElementById('slider-track');
+    const priceMin = actualMinPrice;
+    const priceMax = actualMaxPrice;
     
-    minSlider.min = actualMinPrice;
-    minSlider.max = actualMaxPrice;
-    minSlider.value = actualMinPrice;
+    // Generate histogram
+    const histogramBars = 30;
+    const priceRanges = [];
+    const step = (priceMax - priceMin) / histogramBars;
     
-    maxSlider.min = actualMinPrice;
-    maxSlider.max = actualMaxPrice;
-    maxSlider.value = actualMaxPrice;
-    
-    minDisplay.textContent = '$' + actualMinPrice;
-    maxDisplay.textContent = '$' + actualMaxPrice;
-    
-    function updateSlider() {
-      let minVal = parseInt(minSlider.value);
-      let maxVal = parseInt(maxSlider.value);
+    for (let i = 0; i < histogramBars; i++) {
+      const rangeStart = priceMin + (i * step);
+      const rangeEnd = rangeStart + step;
       
-      if (minVal >= maxVal) {
-        if (this === minSlider) {
-          maxSlider.value = minVal + 1;
-          maxVal = minVal + 1;
-        } else {
-          minSlider.value = maxVal - 1;
-          minVal = maxVal - 1;
-        }
-      }
+      const count = allProperties.filter(p => 
+        p.priceMin >= rangeStart && p.priceMin < rangeEnd
+      ).length;
       
-      minDisplay.textContent = '$' + minVal;
-      maxDisplay.textContent = '$' + maxVal;
-      
-      const percentMin = ((minVal - actualMinPrice) / (actualMaxPrice - actualMinPrice)) * 100;
-      const percentMax = ((maxVal - actualMinPrice) / (actualMaxPrice - actualMinPrice)) * 100;
-      
-      track.style.left = percentMin + '%';
-      track.style.width = (percentMax - percentMin) + '%';
-      
-      updateResultsCount();
+      priceRanges.push(count);
     }
     
-    minSlider.addEventListener('input', updateSlider);
-    maxSlider.addEventListener('input', updateSlider);
+    const maxCount = Math.max(...priceRanges);
     
-    updateSlider.call(minSlider);
+    // Create histogram bars
+    const histogramContainer = document.getElementById('price-histogram');
+    if (histogramContainer) {
+      histogramContainer.innerHTML = '';
+      
+      priceRanges.forEach((count, i) => {
+        const bar = document.createElement('div');
+        bar.className = 'histogram-bar';
+        bar.dataset.index = i;
+        
+        const height = maxCount > 0 ? 20 + (count / maxCount * 80) : 20;
+        bar.style.height = `${height}%`;
+        
+        histogramContainer.appendChild(bar);
+      });
+    }
+    
+    // Setup dual range slider
+    let currentMinPrice = priceMin;
+    let currentMaxPrice = priceMax;
+    
+    const minHandle = document.getElementById('price-slider-min');
+    const maxHandle = document.getElementById('price-slider-max');
+    const rangeEl = document.getElementById('price-slider-range');
+    const minLabel = document.getElementById('price-label-min');
+    const maxLabel = document.getElementById('price-label-max');
+    const track = document.querySelector('.price-slider-track');
+    
+    if (!minHandle || !maxHandle || !track) return;
+    
+    function updateSlider() {
+      const minPercent = ((currentMinPrice - priceMin) / (priceMax - priceMin)) * 100;
+      const maxPercent = ((currentMaxPrice - priceMin) / (priceMax - priceMin)) * 100;
+      
+      minHandle.style.left = `${minPercent}%`;
+      maxHandle.style.left = `${maxPercent}%`;
+      rangeEl.style.left = `${minPercent}%`;
+      rangeEl.style.width = `${maxPercent - minPercent}%`;
+      
+      minLabel.textContent = `$${Math.round(currentMinPrice)}`;
+      maxLabel.textContent = `$${Math.round(currentMaxPrice)}`;
+      
+      // Update histogram
+      document.querySelectorAll('.histogram-bar').forEach((bar, i) => {
+        const barPrice = priceMin + (i * step);
+        if (barPrice >= currentMinPrice && barPrice <= currentMaxPrice) {
+          bar.classList.add('in-range');
+        } else {
+          bar.classList.remove('in-range');
+        }
+      });
+    }
+    
+    // Drag handlers
+    let isDragging = null;
+    
+    minHandle.addEventListener('mousedown', () => isDragging = 'min');
+    maxHandle.addEventListener('mousedown', () => isDragging = 'max');
+    
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      
+      const rect = track.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const percent = Math.max(0, Math.min(100, (x / rect.width) * 100));
+      const price = priceMin + (percent / 100) * (priceMax - priceMin);
+      
+      if (isDragging === 'min' && price < currentMaxPrice - 10) {
+        currentMinPrice = price;
+      } else if (isDragging === 'max' && price > currentMinPrice + 10) {
+        currentMaxPrice = price;
+      }
+      
+      updateSlider();
+    });
+    
+    document.addEventListener('mouseup', () => isDragging = null);
+    
+    // Expose currentPrices globally
+    window.getCurrentPriceRange = () => ({ min: currentMinPrice, max: currentMaxPrice });
+    
+    updateSlider();
   }
   
   // ============================================
@@ -421,6 +477,7 @@
   // ============================================
   
   function setupEventListeners() {
+    // Filter button toggle
     document.getElementById('filter-btn').addEventListener('click', function(e) {
       e.stopPropagation();
       document.getElementById('filter-dropdown').classList.toggle('active');
@@ -445,8 +502,8 @@
       updateResultsCount();
     });
     
-    document.getElementById('filter-clear').addEventListener('click', clearFilters);
-    document.getElementById('filter-apply').addEventListener('click', applyFilters);
+    document.getElementById('clear-filters').addEventListener('click', clearFilters);
+    document.getElementById('apply-filters').addEventListener('click', applyFilters);
     
     document.getElementById('search-btn').addEventListener('click', handleSearch);
     
@@ -806,6 +863,29 @@ async function initMapDrivenFiltering(searchCoords) {
     
     console.log('🗺️ Map-driven filtering initialized with', allCards.length, 'cards');
     
+    // Set max bounds to limit zoom/pan to reasonable area around properties
+    // Calculate bounds from all property locations
+    const propertyLatLngs = [];
+    allCards.forEach(card => {
+      const lat = parseFloat(card.getAttribute('data-lat'));
+      const lng = parseFloat(card.getAttribute('data-lng'));
+      if (!isNaN(lat) && !isNaN(lng)) {
+        propertyLatLngs.push([lat, lng]);
+      }
+    });
+    
+    if (propertyLatLngs.length > 0) {
+      // Create bounds from all properties with padding
+      const bounds = L.latLngBounds(propertyLatLngs);
+      const paddedBounds = bounds.pad(0.5); // Add 50% padding
+      
+      // Set max bounds to prevent zooming too far out
+      map.setMaxBounds(paddedBounds);
+      map.setMinZoom(6); // Prevent zooming out too much
+      
+      console.log('🗺️ Map bounds limited to property area');
+    }
+    
     // Center map on search location if provided
     if (searchCoords && searchCoords.lat && searchCoords.lng) {
       console.log('🗺️ Centering map on search location:', searchCoords);
@@ -999,13 +1079,11 @@ function centerMapOnLocation(lat, lng, zoom = 12) {
   }
 }
 
-// Update results count display
+// Update results count display (removed - not needed)
 function updateResultsCount(count) {
-  const el = document.getElementById('results-count');
-  if (el) {
-    el.textContent = `${count} properties`;
-  }
+  // Removed per user request
 }
+
 
 // Show/hide loading state on property cards
 function showCardLoadingState(show) {
