@@ -11,6 +11,7 @@
   // State
   let allProperties = [];
   let availablePropertyIds = [];
+  let didCheckAvailability = false; // Track if we checked dates
   let searchLocationCoords = null; // Store search location coordinates
   let actualMinPrice = Infinity;
   let actualMaxPrice = 0;
@@ -203,6 +204,8 @@
       document.getElementById('results-count').textContent = 
         `Found ${availablePropertyIds.length} available properties`;
       
+      didCheckAvailability = true; // Mark that we checked dates
+      
     } catch (error) {
       console.error('❌ Availability check failed:', error);
       availablePropertyIds = [];
@@ -284,7 +287,8 @@
         }
       }
       
-      if (availablePropertyIds.length > 0) {
+      // Availability check - only apply if we actually checked dates
+      if (didCheckAvailability) {
         if (!availablePropertyIds.includes(parseInt(property.listingId))) {
           return false;
         }
