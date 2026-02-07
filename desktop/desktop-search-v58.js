@@ -1107,9 +1107,9 @@ async function initMapDrivenFiltering(searchCoords) {
       // Check if property is within map bounds
       const isInBounds = bounds.contains([lat, lng]);
       
-      // Apply availability filter if dates were searched
+      // Apply availability filter if dates were searched - FIXED LOGIC
       let isAvailable = true;
-      if (didCheck && availableIds.length > 0) {
+      if (didCheck) {
         isAvailable = availableIds.includes(parseInt(listingId));
       }
       
@@ -1227,9 +1227,9 @@ async function initMapDrivenFiltering(searchCoords) {
     window.mapMarkers.forEach(marker => {
       const markerListingId = marker.options.listingId;
       
-      // Check availability
+      // Check availability - FIXED LOGIC
       let isAvailable = true;
-      if (didCheck && availableIds.length > 0) {
+      if (didCheck) {
         isAvailable = availableIds.includes(parseInt(markerListingId));
       }
       
