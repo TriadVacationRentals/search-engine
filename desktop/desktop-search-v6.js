@@ -66,15 +66,21 @@
       console.log('Fetching all properties...');
       await fetchAllProperties();
       
-      // Validate: If dates provided, location is REQUIRED
-      if ((checkin || checkout) && !location) {
-        console.warn('Dates provided without location - showing all properties');
-        showError('Please enter a destination to search by dates');
-      }
-      
-      if (checkin && checkout && location) {
-        console.log('Has dates + location - checking availability...');
-        await checkAvailability(checkin, checkout, guests || '2');
+      // Check availability if dates are provided
+      if (checkin && checkout) {
+        if (!location) {
+          console.warn('Dates without location - showing error');
+          showError('Please enter a destination to search by dates');
+        } else {
+          console.log('Has dates + location - checking availability...');
+          await checkAvailability(checkin, checkout, guests || '2');
+        }
+      } else if (location) {
+        // Location only - filter by location without checking availability
+        console.log('Location only - filtering by radius...');
+        await getLocationCoordinates(location);
+        // Set flag so we filter by location
+        didCheckAvailability = false; // Don't filter by availability
       }
       
       console.log('Setting up UI...');
@@ -84,7 +90,7 @@
       updateResultsCount();
       
       // Apply filters automatically if we have search criteria
-      if ((checkin && checkout) || location) {
+      if (location || (checkin && checkout)) {
         console.log('Applying search filters...');
         applyFilters();
       }
@@ -227,10 +233,23 @@
     const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
     const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
+    const RADIUS_MILES = 30;
+    
     return allProperties.filter(function(property) {
-      // Location filtering is done by Worker - no need to filter here
+      // Location filtering - if we have location but didn't check availability (location-only search)
+      if (searchLocationCoords && !didCheckAvailability && property.latitude && property.longitude) {
+        const distance = calculateDistance(
+          searchLocationCoords.lat,
+          searchLocationCoords.lng,
+          property.latitude,
+          property.longitude
+        );
+        if (distance > RADIUS_MILES) {
+          return false;
+        }
+      }
       
-      // Availability check - only apply if we actually checked dates
+      // Availability check - only apply if we checked dates
       if (didCheckAvailability) {
         if (!availablePropertyIds.includes(parseInt(property.listingId))) {
           return false;
