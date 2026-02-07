@@ -817,6 +817,23 @@ async function initMapDrivenFiltering(searchCoords) {
   function updateCardsFromMapBounds() {
     console.log('🔄 updateCardsFromMapBounds called');
     
+    // Show brief loading state
+    const allCards = document.querySelectorAll('[data-listings-id]');
+    allCards.forEach(card => {
+      card.style.opacity = '0.4';
+      card.style.transition = 'opacity 0.15s ease-out';
+    });
+    
+    // Use setTimeout to show loading state briefly
+    setTimeout(() => {
+      performFiltering();
+    }, 100);
+  }
+  
+  function performFiltering() {
+    const map = window.mapInstance;
+    const allCards = document.querySelectorAll('[data-listings-id]');
+    
     const bounds = map.getBounds();
     console.log('📍 Map bounds:', bounds);
     
@@ -853,14 +870,33 @@ async function initMapDrivenFiltering(searchCoords) {
       // Show card if in bounds AND available AND passes filters
       if (isInBounds && isAvailable && passesFilters) {
         card.style.display = '';
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(10px)';
+        card.style.transition = 'opacity 0.4s ease-out, transform 0.4s ease-out';
         visibleCount++;
       } else {
-        card.style.display = 'none';
+        card.style.opacity = '0';
+        card.style.transition = 'opacity 0.2s ease-out';
+        
+        setTimeout(() => {
+          if (card.style.opacity === '0') {
+            card.style.display = 'none';
+          }
+        }, 200);
       }
     });
     
     console.log(`🗺️ Showing ${visibleCount} properties in current map view`);
     updateResultsCount(visibleCount);
+    
+    // Staggered animation for visible cards
+    const visibleCards = Array.from(allCards).filter(card => card.style.display !== 'none');
+    visibleCards.forEach((card, index) => {
+      setTimeout(() => {
+        card.style.opacity = '1';
+        card.style.transform = 'translateY(0)';
+      }, index * 30); // 30ms delay between each card
+    });
     
     // If no properties found, try zooming out to find nearest ones
     if (visibleCount === 0 && allCards.length > 0) {
