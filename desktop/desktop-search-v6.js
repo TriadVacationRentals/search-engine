@@ -66,6 +66,11 @@
     setupEventListeners();
     updateResultsCount();
     
+    // Apply filters automatically if we have search results
+    if (checkin && checkout && availablePropertyIds.length >= 0) {
+      applyFilters();
+    }
+    
     console.log('Filter system ready!');
   }
   
