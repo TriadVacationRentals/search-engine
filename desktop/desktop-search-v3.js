@@ -130,10 +130,16 @@
       
       console.log('Checking availability:', { checkin, checkout, guests });
       
+      // Build API URL with location coordinates if available
+      let apiUrl = `${WORKER_URL}/api/search?checkin=${checkin}&checkout=${checkout}&guests=${guests}`;
+      
+      if (searchLocationCoords) {
+        apiUrl += `&lat=${searchLocationCoords.lat}&lng=${searchLocationCoords.lng}`;
+        console.log('Filtering by location:', searchLocationCoords);
+      }
+      
       // Call Worker to get available property IDs
-      const response = await fetch(
-        `${WORKER_URL}/api/search?checkin=${checkin}&checkout=${checkout}&guests=${guests}`
-      );
+      const response = await fetch(apiUrl);
       
       if (!response.ok) {
         throw new Error(`API returned ${response.status}`);
@@ -658,6 +664,12 @@
   async function handleSearch() {
     const location = document.getElementById('location-input').value;
     
+    // Validate location is required
+    if (!location || location.trim() === '') {
+      showError('Please enter a destination');
+      return;
+    }
+    
     // Fix date conversion - use local timezone, not UTC
     let checkin = '';
     let checkout = '';
@@ -679,12 +691,30 @@
     const guests = guestCount;
     
     const params = new URLSearchParams();
-    if (location) params.append('location', location);
+    params.append('location', location); // Location is now always included
     if (checkin) params.append('checkin', checkin);
     if (checkout) params.append('checkout', checkout);
     params.append('guests', guests);
     
     window.location.href = `/listings?${params.toString()}`;
+  }
+  
+  function showError(message) {
+    // Create or get error element
+    let errorEl = document.getElementById('search-error');
+    if (!errorEl) {
+      errorEl = document.createElement('div');
+      errorEl.id = 'search-error';
+      errorEl.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 500; z-index: 10000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);';
+      document.body.appendChild(errorEl);
+    }
+    
+    errorEl.textContent = message;
+    errorEl.style.display = 'block';
+    
+    setTimeout(() => {
+      errorEl.style.display = 'none';
+    }, 3000);
   }
   
   // ============================================
