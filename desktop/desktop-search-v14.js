@@ -852,6 +852,15 @@ async function initMapDrivenFiltering(searchCoords) {
     console.log(`🗺️ Showing ${visibleCount} properties in current map view`);
     updateResultsCount(visibleCount);
     
+    // If no properties found, try zooming out to find nearest ones
+    if (visibleCount === 0 && allCards.length > 0) {
+      console.log('🔍 No properties in view, searching for nearest...');
+      findAndShowNearestProperties(map, allCards);
+    }
+    
+    // Show empty state if still no results
+    showEmptyState(visibleCount === 0);
+    
     // Update markers on map
     updateMapMarkersVisibility();
   }
@@ -953,5 +962,110 @@ function updateResultsCount(count) {
   const el = document.getElementById('results-count');
   if (el) {
     el.textContent = `${count} properties`;
+  }
+}
+
+// Find and zoom to show nearest properties
+function findAndShowNearestProperties(map, allCards) {
+  const mapCenter = map.getCenter();
+  const filterState = window.filterState || {};
+  const availableIds = filterState.availablePropertyIds || [];
+  const didCheck = filterState.didCheckAvailability || false;
+  
+  // Get all valid property locations with distances
+  const propertiesWithDistance = [];
+  
+  allCards.forEach(card => {
+    const lat = parseFloat(card.getAttribute('data-lat'));
+    const lng = parseFloat(card.getAttribute('data-lng'));
+    const listingId = card.getAttribute('data-listings-id');
+    
+    if (isNaN(lat) || isNaN(lng)) return;
+    
+    // Check if property is available (if dates were searched)
+    if (didCheck && availableIds.length > 0) {
+      if (!availableIds.includes(parseInt(listingId))) return;
+    }
+    
+    // Calculate distance from map center
+    const distance = map.distance([lat, lng], mapCenter);
+    
+    propertiesWithDistance.push({
+      lat,
+      lng,
+      distance,
+      listingId
+    });
+  });
+  
+  if (propertiesWithDistance.length === 0) {
+    console.log('❌ No properties found anywhere');
+    return;
+  }
+  
+  // Sort by distance and get nearest properties
+  propertiesWithDistance.sort((a, b) => a.distance - b.distance);
+  
+  // Get nearest 5-10 properties
+  const nearestProperties = propertiesWithDistance.slice(0, Math.min(10, propertiesWithDistance.length));
+  
+  console.log(`📍 Found ${nearestProperties.length} nearest properties`);
+  
+  // Create bounds that include all nearest properties
+  const bounds = L.latLngBounds(nearestProperties.map(p => [p.lat, p.lng]));
+  
+  // Fit map to show these properties with some padding
+  map.fitBounds(bounds, { 
+    padding: [50, 50],
+    maxZoom: 11 // Don't zoom in too much
+  });
+}
+
+// Show/hide empty state message
+function showEmptyState(show) {
+  let emptyState = document.getElementById('empty-state-message');
+  
+  if (show) {
+    if (!emptyState) {
+      // Create empty state element
+      emptyState = document.createElement('div');
+      emptyState.id = 'empty-state-message';
+      emptyState.style.cssText = `
+        padding: 60px 20px;
+        text-align: center;
+        font-family: 'Manrope', -apple-system, sans-serif;
+        max-width: 500px;
+        margin: 40px auto;
+      `;
+      
+      emptyState.innerHTML = `
+        <div style="font-size: 24px; font-weight: 600; color: #222; margin-bottom: 12px;">
+          No exact matches
+        </div>
+        <div style="font-size: 16px; color: #717171; margin-bottom: 24px; line-height: 1.5;">
+          Try adjusting your search. Changing your dates or zooming out on the map might open up more options.
+        </div>
+        <div style="font-size: 14px; color: #222; font-weight: 500;">
+          Suggestions:
+        </div>
+        <ul style="list-style: none; padding: 0; margin: 16px 0 0 0; font-size: 14px; color: #717171; text-align: left; display: inline-block;">
+          <li style="margin-bottom: 8px;">• Zoom out on the map to see more properties</li>
+          <li style="margin-bottom: 8px;">• Try different dates</li>
+          <li style="margin-bottom: 8px;">• Remove some filters</li>
+          <li>• Search a nearby city or region</li>
+        </ul>
+      `;
+      
+      // Insert after property cards container
+      const cardsContainer = document.querySelector('.collection-list, [data-listings-id]')?.parentElement;
+      if (cardsContainer) {
+        cardsContainer.appendChild(emptyState);
+      }
+    }
+    emptyState.style.display = 'block';
+  } else {
+    if (emptyState) {
+      emptyState.style.display = 'none';
+    }
   }
 }
