@@ -967,24 +967,16 @@ async function initMapDrivenFiltering(searchCoords) {
     
     // DON'T restrict map bounds - user should be able to zoom out freely
     
-    // Center map on search location if provided
-    if (searchCoords && searchCoords.lat && searchCoords.lng) {
-      console.log('🗺️ Centering map on search location:', searchCoords);
-      map.setView([searchCoords.lat, searchCoords.lng], 10);
-      
-      // Wait for map to finish centering before filtering
-      map.once('moveend', () => {
-        console.log('✅ Map finished centering');
-        setTimeout(updateCardsFromMapBounds, 300);
-      });
-    } else {
-      // No search location, trigger filtering immediately
-      setTimeout(updateCardsFromMapBounds, 500);
-    }
-  
-  
+    let isInitialCentering = false;
+    
   // Function to update cards based on map bounds
   function updateCardsFromMapBounds() {
+    // Skip if we're doing initial centering
+    if (isInitialCentering) {
+      console.log('⏸️ Skipping update during initial centering');
+      return;
+    }
+    
     console.log('🔄 updateCardsFromMapBounds called');
     
     // Show brief loading state
@@ -1168,6 +1160,26 @@ async function initMapDrivenFiltering(searchCoords) {
   
   // Expose function globally for filter updates
   window.updateCardsFromMap = updateCardsFromMapBounds;
+  
+  // Center map on search location if provided
+  if (searchCoords && searchCoords.lat && searchCoords.lng) {
+    console.log('🗺️ Centering map on search location:', searchCoords);
+    
+    isInitialCentering = true;
+    map.setView([searchCoords.lat, searchCoords.lng], 10);
+    
+    // Wait for centering to complete
+    map.once('moveend', () => {
+      console.log('✅ Map finished centering on search location');
+      isInitialCentering = false;
+      
+      // Now trigger filtering
+      setTimeout(updateCardsFromMapBounds, 300);
+    });
+  } else {
+    // No search location, trigger initial filter
+    setTimeout(updateCardsFromMapBounds, 500);
+  }
   
   } catch (error) {
     console.error('Map initialization failed:', error);
