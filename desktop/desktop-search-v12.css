@@ -392,10 +392,10 @@ body {
   top: calc(100% + 12px);
   right: 0;
   background: white;
-  border-radius: 40px;
+  border-radius: 24px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.12);
-  padding: 32px;
-  width: 420px;
+  padding: 24px;
+  width: 340px;
   max-height: 600px;
   overflow-y: auto;
   display: none;
@@ -408,8 +408,8 @@ body {
 
 /* Filter sections */
 .filter-section {
-  margin-bottom: 32px;
-  padding-bottom: 24px;
+  margin-bottom: 20px;
+  padding-bottom: 20px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
 
@@ -420,10 +420,10 @@ body {
 }
 
 .filter-section-title {
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
   color: #0F2C3A;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
   font-family: 'Manrope', sans-serif;
 }
 
@@ -514,16 +514,16 @@ body {
 .property-types {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .property-type-pill {
-  padding: 10px 18px;
+  padding: 8px 14px;
   border: 1.5px solid #E0E0E0;
-  border-radius: 24px;
+  border-radius: 8px;
   background: white;
   color: #0F2C3A;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -545,7 +545,7 @@ body {
 .room-selectors {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .room-selector-item {
@@ -555,7 +555,7 @@ body {
 }
 
 .room-selector-label {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 400;
   color: #0F2C3A;
   font-family: 'Manrope', sans-serif;
@@ -568,13 +568,13 @@ body {
 }
 
 .room-btn {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   border: 1.5px solid #E0E0E0;
   background: white;
   color: #0F2C3A;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 400;
   cursor: pointer;
   display: flex;
@@ -596,10 +596,15 @@ body {
   background: white;
 }
 
+.room-btn.disabled-state {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
 .room-count {
-  min-width: 40px;
+  min-width: 35px;
   text-align: center;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   color: #0F2C3A;
 }
