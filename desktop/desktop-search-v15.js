@@ -153,6 +153,9 @@
       
       console.log('Checking availability:', { checkin, checkout, guests });
       
+      // Show loading spinners on all cards
+      showCardLoadingState(true);
+      
       // Build API URL with location coordinates if available
       let apiUrl = `${WORKER_URL}/api/search?checkin=${checkin}&checkout=${checkout}&guests=${guests}`;
       
@@ -182,10 +185,17 @@
       const el = document.getElementById('results-count'); if (el) el.textContent = 
         `Found ${availablePropertyIds.length} available properties`;
       
+      // Hide loading spinners
+      showCardLoadingState(false);
+      
     } catch (error) {
       console.error('❌ Availability check failed:', error);
       availablePropertyIds = [];
       didCheckAvailability = true;
+      
+      // Hide loading spinners on error
+      showCardLoadingState(false);
+      
       const el = document.getElementById('results-count'); if (el) el.textContent = 'Failed to check availability';
     }
   }
@@ -963,6 +973,66 @@ function updateResultsCount(count) {
   if (el) {
     el.textContent = `${count} properties`;
   }
+}
+
+// Show/hide loading state on property cards
+function showCardLoadingState(show) {
+  const allCards = document.querySelectorAll('[data-listings-id]');
+  
+  allCards.forEach(card => {
+    let spinner = card.querySelector('.card-loading-spinner');
+    
+    if (show) {
+      if (!spinner) {
+        // Create spinner overlay
+        spinner = document.createElement('div');
+        spinner.className = 'card-loading-spinner';
+        spinner.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(255, 255, 255, 0.85);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10;
+          border-radius: inherit;
+        `;
+        
+        spinner.innerHTML = `
+          <div style="
+            width: 32px;
+            height: 32px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #222;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+          "></div>
+          <style>
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          </style>
+        `;
+        
+        // Make sure card has position relative
+        const cardPosition = window.getComputedStyle(card).position;
+        if (cardPosition === 'static') {
+          card.style.position = 'relative';
+        }
+        
+        card.appendChild(spinner);
+      }
+      spinner.style.display = 'flex';
+    } else {
+      if (spinner) {
+        spinner.style.display = 'none';
+      }
+    }
+  });
 }
 
 // Find and zoom to show nearest properties
