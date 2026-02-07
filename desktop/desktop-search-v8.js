@@ -125,17 +125,22 @@
       document.getElementById('results-count').textContent = 'Checking availability...';
       
       console.log('Checking availability:', { checkin, checkout, guests });
+      console.log('Calling:', `${WORKER_URL}/api/search?checkin=${checkin}&checkout=${checkout}&guests=${guests}`);
       
       const response = await fetch(
         `${WORKER_URL}/api/search?checkin=${checkin}&checkout=${checkout}&guests=${guests}`
       );
+      
+      console.log('API response status:', response.status);
+      
       const data = await response.json();
+      console.log('API response data:', data);
       
       availablePropertyIds = data.available || [];
-      console.log(`API returned ${availablePropertyIds.length} available properties:`, availablePropertyIds);
+      console.log(`✅ API returned ${availablePropertyIds.length} available properties:`, availablePropertyIds);
       
     } catch (error) {
-      console.error('Availability check failed:', error);
+      console.error('❌ Availability check failed:', error);
       availablePropertyIds = [];
     }
   }
