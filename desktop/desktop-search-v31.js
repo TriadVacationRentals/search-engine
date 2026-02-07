@@ -262,7 +262,6 @@
       .map(pill => pill.dataset.type);
     
     const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
-    const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
     const RADIUS_MILES = 30;
     
@@ -299,10 +298,6 @@
         return false;
       }
       
-      if (smokingRequired && !property.smokingAllowed) {
-        return false;
-      }
-      
       return true;
     });
   }
@@ -331,7 +326,6 @@
     });
     
     document.getElementById('pets-toggle').classList.remove('active');
-    document.getElementById('smoking-toggle').classList.remove('active');
     
     // Reset room filters
     bedroomsFilter = 0;
@@ -587,11 +581,6 @@
     });
     
     document.getElementById('pets-toggle').addEventListener('click', function() {
-      this.classList.toggle('active');
-      updateResultsCount();
-    });
-    
-    document.getElementById('smoking-toggle').addEventListener('click', function() {
       this.classList.toggle('active');
       updateResultsCount();
     });
@@ -1082,7 +1071,6 @@ async function initMapDrivenFiltering(searchCoords) {
     const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
     
     if (petsRequired && !property.petsAllowed) return false;
-    if (smokingRequired && !property.smokingAllowed) return false;
     
     // Room filters
     if (bedroomsFilter > 0 && property.bedrooms < bedroomsFilter) return false;
