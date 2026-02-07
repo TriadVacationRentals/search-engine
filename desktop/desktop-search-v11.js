@@ -16,6 +16,16 @@
   let actualMinPrice = Infinity;
   let actualMaxPrice = 0;
   
+  // Expose to global scope for map-driven filtering
+  window.filterState = {
+    allProperties: [],
+    availablePropertyIds: [],
+    didCheckAvailability: false,
+    searchLocationCoords: null,
+    actualMinPrice: Infinity,
+    actualMaxPrice: 0
+  };
+  
   let debounceTimer = null;
   let selectedLocation = null;
   let guestCount = 2;
@@ -116,6 +126,7 @@
       }
       
       allProperties = data.properties.filter(p => p.isLive);
+      window.filterState.allProperties = allProperties;
       
       allProperties.forEach(function(property) {
         if (property.priceMin < actualMinPrice && property.priceMin > 0) {
@@ -161,6 +172,10 @@
       
       availablePropertyIds = data.available || [];
       didCheckAvailability = true;
+      
+      // Sync to global state
+      window.filterState.availablePropertyIds = availablePropertyIds;
+      window.filterState.didCheckAvailability = true;
       
       console.log(`✅ Worker returned ${availablePropertyIds.length} available properties:`, availablePropertyIds);
       
@@ -784,7 +799,7 @@ async function initMapDrivenFiltering(searchCoords) {
     // Center map on search location if provided
     if (searchCoords && searchCoords.lat && searchCoords.lng) {
       console.log('🗺️ Centering map on search location:', searchCoords);
-      map.setView([searchCoords.lat, searchCoords.lng], 12);
+      map.setView([searchCoords.lat, searchCoords.lng], 10);
     }
   
   
@@ -792,6 +807,10 @@ async function initMapDrivenFiltering(searchCoords) {
   function updateCardsFromMapBounds() {
     const bounds = map.getBounds();
     let visibleCount = 0;
+    
+    const filterState = window.filterState || {};
+    const availableIds = filterState.availablePropertyIds || [];
+    const didCheck = filterState.didCheckAvailability || false;
     
     allCards.forEach(card => {
       const lat = parseFloat(card.getAttribute('data-lat'));
@@ -808,8 +827,8 @@ async function initMapDrivenFiltering(searchCoords) {
       
       // Apply availability filter if dates were searched
       let isAvailable = true;
-      if (didCheckAvailability && availablePropertyIds.length > 0) {
-        isAvailable = availablePropertyIds.includes(parseInt(listingId));
+      if (didCheck && availableIds.length > 0) {
+        isAvailable = availableIds.includes(parseInt(listingId));
       }
       
       // Apply other filters (price, type, amenities)
