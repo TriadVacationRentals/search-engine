@@ -591,6 +591,48 @@
     
     document.getElementById('search-btn').addEventListener('click', handleSearch);
     
+    // Handle browser back/forward buttons
+    window.addEventListener('popstate', function(event) {
+      console.log('⬅️ Browser back/forward button clicked');
+      
+      // Parse URL params
+      const urlParams = new URLSearchParams(window.location.search);
+      const location = urlParams.get('location');
+      const checkin = urlParams.get('checkin');
+      const checkout = urlParams.get('checkout');
+      const guests = urlParams.get('guests');
+      
+      if (location) {
+        // User went back/forward to a search - perform it
+        console.log('🔄 Restoring search state:', { location, checkin, checkout, guests });
+        
+        // Update form fields
+        document.getElementById('location-input').value = location;
+        selectedLocation = { description: location };
+        
+        if (checkin) {
+          checkinDate = new Date(checkin);
+          document.getElementById('checkin-display').value = checkinDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+        
+        if (checkout) {
+          checkoutDate = new Date(checkout);
+          document.getElementById('checkout-display').value = checkoutDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+        
+        if (guests) {
+          guestCount = parseInt(guests);
+          updateGuestDisplay();
+        }
+        
+        // Perform the search
+        performClientSideSearch(location, checkin, checkout, guests);
+      } else {
+        // User went back to no-search state - reload to show all
+        window.location.reload();
+      }
+    });
+    
     setupSearchBar();
   }
   
@@ -841,12 +883,75 @@
     const guests = guestCount;
     
     const params = new URLSearchParams();
-    params.append('location', location); // Location is now always included
+    params.append('location', location);
     if (checkin) params.append('checkin', checkin);
     if (checkout) params.append('checkout', checkout);
     params.append('guests', guests);
     
-    window.location.href = `/listings?${params.toString()}`;
+    // ✅ NO RELOAD! Update URL and trigger search client-side
+    const newUrl = `/listings?${params.toString()}`;
+    console.log('🔍 Performing client-side search:', newUrl);
+    
+    // Update browser URL without reload (back button works!)
+    window.history.pushState({ search: true }, '', newUrl);
+    
+    // Trigger the search client-side
+    await performClientSideSearch(location, checkin, checkout, guests);
+  }
+  
+  async function performClientSideSearch(location, checkin, checkout, guests) {
+    try {
+      console.log('🚀 Client-side search started:', { location, checkin, checkout, guests });
+      
+      // Update selectedLocation
+      selectedLocation = { description: location };
+      
+      // Get coordinates for the new location
+      console.log('📍 Getting coordinates for new location...');
+      await getLocationCoordinates(location);
+      
+      // If dates provided, check availability
+      if (checkin && checkout) {
+        console.log('📅 Checking availability for dates...');
+        await checkAvailability(checkin, checkout, guests || '2');
+      } else {
+        // Clear availability filter if no dates
+        window.filterState.didCheckAvailability = false;
+        window.filterState.availablePropertyIds = [];
+      }
+      
+      // Re-center map and filter
+      if (searchLocationCoords && searchLocationCoords.lat && searchLocationCoords.lng) {
+        console.log('🗺️ Re-centering map on new location:', searchLocationCoords);
+        
+        const map = window.mapInstance;
+        if (map) {
+          // Detach listeners temporarily to avoid double-triggering
+          map.off('moveend', updateCardsFromMapBounds);
+          map.off('zoomend', updateCardsFromMapBounds);
+          
+          // Center on new location
+          map.setView([searchLocationCoords.lat, searchLocationCoords.lng], 10);
+          
+          // Wait for map to settle
+          setTimeout(() => {
+            // Re-attach listeners
+            map.on('moveend', updateCardsFromMapBounds);
+            map.on('zoomend', updateCardsFromMapBounds);
+            
+            // Trigger filtering
+            console.log('⚡ Triggering filtering for new search');
+            updateCardsFromMapBounds();
+          }, 800);
+        }
+      }
+      
+      console.log('✅ Client-side search complete!');
+      
+    } catch (error) {
+      console.error('❌ Client-side search failed:', error);
+      showError('Search failed. Please try again.');
+    }
   }
   
   function showError(message) {
