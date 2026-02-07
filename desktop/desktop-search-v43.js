@@ -1255,6 +1255,14 @@ function findAndShowNearestProperties(map, allCards) {
     padding: [50, 50],
     maxZoom: 11 // Don't zoom in too much
   });
+  
+  // Manually trigger update after zoom completes
+  setTimeout(() => {
+    if (window.updateCardsFromMap) {
+      console.log('🔄 Re-filtering after smart zoom...');
+      window.updateCardsFromMap();
+    }
+  }, 500);
 }
 
 // Show/hide empty state message
