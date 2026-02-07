@@ -66,8 +66,8 @@
       console.log('Fetching all properties...');
       await fetchAllProperties();
       
-      // Initialize map-driven filtering
-      initMapDrivenFiltering();
+      // Initialize map-driven filtering (wait for map to load)
+      await initMapDrivenFiltering();
       
       // If location provided, center map on it
       if (location) {
@@ -754,23 +754,38 @@
 
 // Wait for map to be ready
 function waitForMap() {
-  return new Promise((resolve) => {
+  console.log('⏳ Waiting for map to load...');
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const maxAttempts = 100; // 10 seconds timeout
+    
     const checkMap = setInterval(() => {
+      attempts++;
+      
       if (window.mapInstance && window.mapMarkers) {
+        console.log('✅ Map found after', attempts * 100, 'ms');
         clearInterval(checkMap);
         resolve();
+      } else if (attempts >= maxAttempts) {
+        console.error('❌ Map not found after 10 seconds');
+        console.log('window.mapInstance:', window.mapInstance);
+        console.log('window.mapMarkers:', window.mapMarkers);
+        clearInterval(checkMap);
+        reject(new Error('Map timeout'));
       }
     }, 100);
   });
 }
 
 async function initMapDrivenFiltering() {
-  await waitForMap();
+  try {
+    await waitForMap();
+    
+    const map = window.mapInstance;
+    const allCards = document.querySelectorAll('[data-listings-id]');
+    
+    console.log('🗺️ Map-driven filtering initialized with', allCards.length, 'cards');
   
-  const map = window.mapInstance;
-  const allCards = document.querySelectorAll('[data-listings-id]');
-  
-  console.log('🗺️ Map-driven filtering initialized');
   
   // Function to update cards based on map bounds
   function updateCardsFromMapBounds() {
@@ -883,6 +898,14 @@ async function initMapDrivenFiltering() {
   
   // Expose function globally for filter updates
   window.updateCardsFromMap = updateCardsFromMapBounds;
+  
+  } catch (error) {
+    console.error('Map initialization failed:', error);
+    // Fallback: show all cards if map doesn't load
+    document.querySelectorAll('[data-listings-id]').forEach(card => {
+      card.style.display = '';
+    });
+  }
 }
 
 // Function to center map on search location
