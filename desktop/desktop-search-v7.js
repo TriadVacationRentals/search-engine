@@ -66,6 +66,20 @@
       console.log('Fetching all properties...');
       await fetchAllProperties();
       
+      // Initialize map-driven filtering
+      initMapDrivenFiltering();
+      
+      // If location provided, center map on it
+      if (location) {
+        console.log('Getting location coordinates...');
+        await getLocationCoordinates(location);
+        
+        if (searchLocationCoords) {
+          console.log('Centering map on search location...');
+          centerMapOnLocation(searchLocationCoords.lat, searchLocationCoords.lng, 12);
+        }
+      }
+      
       // Check availability if dates are provided
       if (checkin && checkout) {
         if (!location) {
@@ -74,26 +88,17 @@
         } else {
           console.log('Has dates + location - checking availability...');
           await checkAvailability(checkin, checkout, guests || '2');
+          // After availability check, update cards from map
+          if (window.updateCardsFromMap) {
+            window.updateCardsFromMap();
+          }
         }
-      } else if (location) {
-        // Location only - filter by location without checking availability
-        console.log('Location only - filtering by radius...');
-        await getLocationCoordinates(location);
-        // Set flag so we filter by location
-        didCheckAvailability = false; // Don't filter by availability
       }
       
       console.log('Setting up UI...');
       setupPriceSliders();
       buildPropertyTypeFilter();
       setupEventListeners();
-      updateResultsCount();
-      
-      // Apply filters automatically if we have search criteria
-      if (location || (checkin && checkout)) {
-        console.log('Applying search filters...');
-        applyFilters();
-      }
       
       console.log('Filter system ready!');
     } catch (error) {
@@ -277,40 +282,12 @@
   }
   
   function applyFilters() {
-    const filtered = getFilteredProperties();
-    
-    console.log('Applying filters - showing', filtered.length, 'of', allProperties.length, 'properties');
-    console.log('Available IDs:', availablePropertyIds);
-    console.log('Search location:', searchLocationCoords);
-    
-    const cards = document.querySelectorAll('[data-listings-id]');
-    const cardMap = {};
-    
-    cards.forEach(function(card) {
-      const id = card.getAttribute('data-listings-id');
-      cardMap[id] = card;
-    });
-    
-    cards.forEach(function(card) {
-      card.style.display = 'none';
-    });
-    
-    const filteredCards = [];
-    filtered.forEach(function(property) {
-      const card = cardMap[property.listingId];
-      if (card) {
-        card.style.display = '';
-        filteredCards.push(card);
-      }
-    });
-    
-    if (typeof window.updateMapMarkers === 'function') {
-      window.updateMapMarkers(filteredCards);
+    // Map-driven approach: just update the map view
+    if (window.updateCardsFromMap) {
+      window.updateCardsFromMap();
     }
     
     document.getElementById('filter-dropdown').classList.remove('active');
-    
-    console.log(`Showing ${filtered.length} of ${allProperties.length} properties`);
   }
   
   function clearFilters() {
@@ -772,3 +749,154 @@
     init();
   }
 })();
+// MAP-DRIVEN FILTERING (Airbnb style)
+// Add this to your existing desktop-search-v3.js
+
+// Wait for map to be ready
+function waitForMap() {
+  return new Promise((resolve) => {
+    const checkMap = setInterval(() => {
+      if (window.mapInstance && window.mapMarkers) {
+        clearInterval(checkMap);
+        resolve();
+      }
+    }, 100);
+  });
+}
+
+async function initMapDrivenFiltering() {
+  await waitForMap();
+  
+  const map = window.mapInstance;
+  const allCards = document.querySelectorAll('[data-listings-id]');
+  
+  console.log('🗺️ Map-driven filtering initialized');
+  
+  // Function to update cards based on map bounds
+  function updateCardsFromMapBounds() {
+    const bounds = map.getBounds();
+    let visibleCount = 0;
+    
+    allCards.forEach(card => {
+      const lat = parseFloat(card.getAttribute('data-lat'));
+      const lng = parseFloat(card.getAttribute('data-lng'));
+      const listingId = card.getAttribute('data-listings-id');
+      
+      if (isNaN(lat) || isNaN(lng)) {
+        card.style.display = 'none';
+        return;
+      }
+      
+      // Check if property is within map bounds
+      const isInBounds = bounds.contains([lat, lng]);
+      
+      // Apply availability filter if dates were searched
+      let isAvailable = true;
+      if (didCheckAvailability && availablePropertyIds.length > 0) {
+        isAvailable = availablePropertyIds.includes(parseInt(listingId));
+      }
+      
+      // Apply other filters (price, type, amenities)
+      const passesFilters = passesOtherFilters(card);
+      
+      // Show card if in bounds AND available AND passes filters
+      if (isInBounds && isAvailable && passesFilters) {
+        card.style.display = '';
+        visibleCount++;
+      } else {
+        card.style.display = 'none';
+      }
+    });
+    
+    console.log(`🗺️ Showing ${visibleCount} properties in current map view`);
+    updateResultsCount(visibleCount);
+    
+    // Update markers on map
+    updateMapMarkersVisibility();
+  }
+  
+  // Function to check other filters (price, type, amenities)
+  function passesOtherFilters(card) {
+    const listingId = parseInt(card.getAttribute('data-listings-id'));
+    const property = allProperties.find(p => parseInt(p.listingId) === listingId);
+    
+    if (!property) return true;
+    
+    // Price filter
+    const priceMin = parseInt(document.getElementById('price-min-slider').value);
+    const priceMax = parseInt(document.getElementById('price-max-slider').value);
+    if (property.priceMin < priceMin || property.priceMax > priceMax) {
+      return false;
+    }
+    
+    // Property type filter
+    const selectedTypes = Array.from(document.querySelectorAll('.property-type-pill.active'))
+      .map(pill => pill.dataset.type);
+    if (selectedTypes.length > 0 && !selectedTypes.includes(property.propertyType)) {
+      return false;
+    }
+    
+    // Amenities filters
+    const petsRequired = document.getElementById('pets-toggle').classList.contains('active');
+    const smokingRequired = document.getElementById('smoking-toggle').classList.contains('active');
+    
+    if (petsRequired && !property.petsAllowed) return false;
+    if (smokingRequired && !property.smokingAllowed) return false;
+    
+    return true;
+  }
+  
+  // Update map markers visibility based on filters
+  function updateMapMarkersVisibility() {
+    window.mapMarkers.forEach(marker => {
+      const markerListingId = marker.options.listingId;
+      
+      // Check availability
+      let isAvailable = true;
+      if (didCheckAvailability && availablePropertyIds.length > 0) {
+        isAvailable = availablePropertyIds.includes(parseInt(markerListingId));
+      }
+      
+      // Check other filters
+      const property = allProperties.find(p => parseInt(p.listingId) === parseInt(markerListingId));
+      const passesFilters = property ? passesOtherFilters(document.querySelector(`[data-listings-id="${markerListingId}"]`)) : true;
+      
+      // Show/hide marker
+      if (isAvailable && passesFilters) {
+        if (!map.hasLayer(marker)) {
+          marker.addTo(map);
+        }
+      } else {
+        if (map.hasLayer(marker)) {
+          map.removeLayer(marker);
+        }
+      }
+    });
+  }
+  
+  // Listen to map movement events
+  map.on('moveend', updateCardsFromMapBounds);
+  map.on('zoomend', updateCardsFromMapBounds);
+  
+  // Initial update
+  setTimeout(updateCardsFromMapBounds, 500);
+  
+  // Expose function globally for filter updates
+  window.updateCardsFromMap = updateCardsFromMapBounds;
+}
+
+// Function to center map on search location
+function centerMapOnLocation(lat, lng, zoom = 12) {
+  if (window.mapInstance) {
+    window.mapInstance.setView([lat, lng], zoom);
+    console.log(`🗺️ Map centered on: ${lat}, ${lng}`);
+  }
+}
+
+// Update results count display
+function updateResultsCount(count) {
+  const el = document.getElementById('results-count');
+  if (el) {
+    el.textContent = `${count} properties`;
+  }
+}
