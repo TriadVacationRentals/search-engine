@@ -967,16 +967,8 @@ async function initMapDrivenFiltering(searchCoords) {
     
     // DON'T restrict map bounds - user should be able to zoom out freely
     
-    let isInitialCentering = false;
-    
   // Function to update cards based on map bounds
   function updateCardsFromMapBounds() {
-    // Skip if we're doing initial centering
-    if (isInitialCentering) {
-      console.log('⏸️ Skipping update during initial centering');
-      return;
-    }
-    
     console.log('🔄 updateCardsFromMapBounds called');
     
     // Only show loading state if cards don't already have initial spinners
@@ -1080,12 +1072,18 @@ async function initMapDrivenFiltering(searchCoords) {
     
     updateResultsCount(visibleCount);
     
-    // If no properties found, try zooming out to find nearest ones
+    // If no properties found, zoom out until we find some
     if (visibleCount === 0 && allCards.length > 0) {
-      console.log('🔍 ZERO properties in view - triggering smart zoom to nearest properties...');
-      findAndShowNearestProperties(map, allCards);
+      console.log('🔍 ZERO properties visible - zooming out...');
+      
+      // Just zoom out by 1 level
+      const currentZoom = map.getZoom();
+      if (currentZoom > 3) {
+        map.setZoom(currentZoom - 1);
+        // The zoomend event will trigger filtering again
+      }
     } else {
-      console.log('✅ Showing properties, no smart zoom needed');
+      console.log('✅ Showing properties, no zoom needed');
     }
     
     // Show empty state if still no results
@@ -1167,10 +1165,6 @@ async function initMapDrivenFiltering(searchCoords) {
     });
   }
   
-  // Listen to map movement events
-  map.on('moveend', updateCardsFromMapBounds);
-  map.on('zoomend', updateCardsFromMapBounds);
-  
   // Expose function globally for filter updates
   window.updateCardsFromMap = updateCardsFromMapBounds;
   
@@ -1178,19 +1172,25 @@ async function initMapDrivenFiltering(searchCoords) {
   if (searchCoords && searchCoords.lat && searchCoords.lng) {
     console.log('🗺️ Centering map on search location:', searchCoords);
     
-    isInitialCentering = true;
     map.setView([searchCoords.lat, searchCoords.lng], 10);
     
-    // Wait for centering to complete
+    // Wait for centering to complete, THEN attach listeners
     map.once('moveend', () => {
       console.log('✅ Map finished centering on search location');
-      isInitialCentering = false;
       
-      // Now trigger filtering
+      // NOW attach the movement listeners
+      map.on('moveend', updateCardsFromMapBounds);
+      map.on('zoomend', updateCardsFromMapBounds);
+      
+      // Trigger initial filtering
       setTimeout(updateCardsFromMapBounds, 300);
     });
   } else {
-    // No search location, trigger initial filter
+    // No search location - attach listeners immediately
+    map.on('moveend', updateCardsFromMapBounds);
+    map.on('zoomend', updateCardsFromMapBounds);
+    
+    // Trigger initial filter
     setTimeout(updateCardsFromMapBounds, 500);
   }
   
