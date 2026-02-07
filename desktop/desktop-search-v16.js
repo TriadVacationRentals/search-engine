@@ -978,6 +978,7 @@ function updateResultsCount(count) {
 // Show/hide loading state on property cards
 function showCardLoadingState(show) {
   const allCards = document.querySelectorAll('[data-listings-id]');
+  console.log(`${show ? '🔄 Showing' : '✅ Hiding'} loading spinners on ${allCards.length} cards`);
   
   allCards.forEach(card => {
     let spinner = card.querySelector('.card-loading-spinner');
